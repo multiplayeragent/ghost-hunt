@@ -1,0 +1,1104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ghost Hunt</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #0a0910; }
+  body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #efeaf6; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; touch-action: none; cursor: crosshair; }
+  .hud { position: fixed; pointer-events: none; text-shadow: 0 2px 4px #000c; font-weight: 700; }
+  #stat { top: max(12px, env(safe-area-inset-top)); left: 16px; width: min(240px, calc(100vw - 150px)); }
+  #stat b { display: block; font-size: 19px; }
+  #stat .bar { height: 7px; margin-top: 5px; border-radius: 4px; background: #ffffff22; overflow: hidden; }
+  #stat .bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #7b6cff, #b9a8ff); transition: width .5s; }
+  #stat .bar i.low { background: linear-gradient(90deg, #ff4d6d, #ff8fa3); }
+  #clock { margin-top: 5px; font-size: 13px; opacity: .9; } #clock.late { color: #ff6a7a; opacity: 1; }
+  #team { top: max(12px, env(safe-area-inset-top)); right: 16px; font-size: 13px; text-align: right; line-height: 1.6; }
+  #team .me { color: #c9b8ff; } #team .dead { opacity: .5; text-decoration: line-through; }
+  #big { inset: 0; display: grid; place-items: center; text-align: center; font-size: clamp(24px, 6vw, 42px); padding: 0 16px; }
+  #big small { display: block; font-size: 16px; opacity: .85; font-weight: 600; }
+  #toast { left: 0; right: 0; top: 26%; text-align: center; font-size: 24px; color: #9ff7c4; opacity: 0; transition: opacity .3s; padding: 0 16px; }
+  #toast.on { opacity: 1; }
+  #msg { left: 0; right: 0; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 136px); text-align: center; font-size: 15px; padding: 0 16px; }
+  #read { left: 50%; transform: translateX(-50%); bottom: calc(max(12px, env(safe-area-inset-bottom)) + 84px); text-align: center; min-width: 220px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 6px 14px; border-radius: 12px; background: #120f1fcc; border: 1px solid #ffffff22; font-size: 16px; }
+  #read .p { height: 5px; margin-top: 5px; border-radius: 3px; background: #ffffff22; overflow: hidden; } #read .p i { display: block; height: 100%; width: 0; background: #9ff7c4; }
+  #net { bottom: max(6px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600; opacity: .7; white-space: nowrap; }
+  #fear { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 40%, #9a0030 125%); }
+  #tools { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(max(12px, env(safe-area-inset-bottom)) + 22px); display: flex; gap: 6px; }
+  #tools button, .round { min-width: 52px; height: 52px; border-radius: 12px; border: 2px solid #ffffff44; background: #1a1630cc; color: #fff; font: 800 12px system-ui, sans-serif; touch-action: none; cursor: pointer; padding: 0 6px; }
+  #tools button.on { border-color: #b9a8ff; background: #5a48c8cc; }
+  #tools button.done { box-shadow: inset 0 -4px 0 #4fe39a; } #tools button.ruled { box-shadow: inset 0 -4px 0 #ff5d73; }
+  #jbtn { position: fixed; top: calc(max(12px, env(safe-area-inset-top)) + 96px); left: 16px; height: 44px; border-radius: 12px; border: 2px solid #b9a8ff; background: #2a2150cc; color: #fff; font: 800 14px system-ui, sans-serif; padding: 0 14px; cursor: pointer; }
+  #run { position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(max(12px, env(safe-area-inset-bottom)) + 130px); width: 64px; height: 64px; border-radius: 50%; }
+  body.touch #tools button { min-width: 0; flex: 1; padding: 0 4px; font-size: 11px; } body.touch #tools { left: 12px; right: 12px; transform: none; }
+  body.touch #tools b { display: none; } body.touch #msg { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 204px); }
+  #run.on { background: #b9a8ff55; }
+  .over { position: fixed; inset: 0; display: grid; place-items: center; background: #0008; }
+  .over[hidden], #run[hidden], #stick[hidden], #jbtn[hidden], #tools[hidden], .card [hidden] { display: none; }
+  .card { width: min(380px, calc(100vw - 32px)); max-height: 88vh; overflow: auto; padding: 18px; border-radius: 16px; background: #171425; border: 1px solid #ffffff22; box-sizing: border-box; text-align: center; }
+  .card h2 { margin: 0 0 4px; font-size: 24px; }
+  .card h3 { margin: 12px 0 4px; font-size: 13px; color: #b9a8ff; text-align: left; text-transform: uppercase; letter-spacing: .05em; }
+  .card ol { margin: 0; padding-left: 24px; font-size: 14px; text-align: left; } .card li span { float: right; font-variant-numeric: tabular-nums; }
+  .card p { margin: 6px 0 0; font-size: 14px; opacity: .88; }
+  .ev { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; }
+  .ev span { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: #ffffff14; border: 1px solid #ffffff22; }
+  .ev span.y { background: #1f6b47; border-color: #4fe39a; } .ev span.n { opacity: .45; text-decoration: line-through; }
+  .gh { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; margin: 4px 0; padding: 6px 10px; border-radius: 10px; border: 1px solid #ffffff22; background: #ffffff0d; color: #fff; font: 700 14px system-ui, sans-serif; text-align: left; cursor: pointer; box-sizing: border-box; }
+  .gh small { display: block; font-weight: 500; font-size: 11px; opacity: .75; }
+  .gh.no { opacity: .35; text-decoration: line-through; } .gh.sel { border-color: #b9a8ff; background: #5a48c855; }
+  .gh i { font-style: normal; font-size: 11px; opacity: .85; white-space: nowrap; }
+  button.go { margin-top: 12px; width: 100%; min-height: 48px; border: 0; border-radius: 12px; background: #b9a8ff; color: #1a1033; font: 800 16px system-ui, sans-serif; cursor: pointer; }
+  button.go:disabled { opacity: .4; cursor: default; }
+  button.ghost { background: transparent; color: #efeaf6; border: 1px solid #ffffff33; }
+  #stick { position: fixed; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 2px solid #ffffff55; background: #ffffff12; pointer-events: none; }
+  #stick i { position: absolute; left: 35px; top: 35px; width: 40px; height: 40px; border-radius: 50%; background: #ffffff66; }
+</style>
+<script src="https://cdn.multiplayeragent.com/sdk/mp.global.js"></script>
+<script type="importmap">{ "imports": { "three": "./libs/three.module.min.js" } }</script>
+</head>
+<body>
+<div id="fear"></div>
+<div class="hud" id="stat"><b id="evText"></b><div class="bar"><i id="sanBar"></i></div><div id="clock"></div></div>
+<button id="jbtn">📖 Journal</button>
+<div class="hud" id="team"></div>
+<div class="hud" id="big"></div>
+<div class="hud" id="toast"></div>
+<div class="hud" id="msg"></div>
+<div class="hud" id="read"><span id="readText"></span><div class="p" id="probe" hidden><i id="probeBar"></i></div></div>
+<div id="tools"></div>
+<button id="run" class="round" hidden>RUN</button>
+<div class="hud" id="net">Connecting…</div>
+<div id="stick" hidden><i></i></div>
+<div class="over" id="journal" hidden><div class="card">
+  <h2>Journal</h2>
+  <h3>Evidence</h3><div class="ev" id="jEv"></div>
+  <h3>Ghosts (3 evidence each)</h3><div id="jList"></div>
+  <button class="go" id="mark" disabled>Pick a ghost</button>
+  <button class="go ghost" id="jClose">Back to hunting</button>
+</div></div>
+<div class="over" id="over" hidden><div class="card">
+  <h2 id="overTitle"></h2><p id="overLine"></p><p id="overScore"></p>
+  <h3>Best hunts</h3><ol id="board"><li>Loading…</li></ol>
+  <button class="go" id="again">Play again</button>
+  <p id="next"></p>
+</div></div>
+<script type="module">
+/* ═══ GHOST HUNT · a Multiplayer Agent starter ═════════════════════════════════════════
+ * Find the evidence. Name the ghost. Get out alive. Co-op, 1–4 players; bot investigators
+ * fill empty seats.
+ *
+ * WHERE THINGS ARE (search for the "── " headers):
+ *   CONFIG ........ timers, sanity, the ghost's speed and hunts, the house map and its rooms
+ *   GHOSTS ........ the evidence list, the tools that find it, the 8 ghost types
+ *   CONNECTION .... MP_CONNECT, joining, the offline room, who is host
+ *   SEALED SECRET . the Seal helper: the ghost type is encrypted, never in plain state
+ *   MAP ........... walls, rooms, paths (for the ghost and bots), line of sight
+ *   SCENE ......... floors, walls, furniture, the van, lamps, evidence props
+ *   PEOPLE ........ investigator and ghost models, flashlights
+ *   HUNT (HOST) ... phases (brief, investigate, escape, reveal), testing evidence, the ghost,
+ *                   its hunts, deaths, escapes and the bot investigators. Only the host runs these.
+ *   ME ............ walking, aiming, tools, sanity. Each player writes only its own.
+ *   HUD & RESULTS . tool readings, journal, team, results card, leaderboard
+ *   INPUT & SOUND . keyboard, mouse, touch stick and buttons, WebAudio effects
+ *
+ * HOW THE MULTIPLAYER WORKS (a relay room: no server code):
+ *   - Each player writes its OWN entity: `p` (one packed JSON field: position, facing, tool,
+ *     sanity, moving, the round it is for) about 12 times a second, `hb` (heartbeat) once a
+ *     second, `n`/`c` (name, color) and `pk` (public key, for the sealed ghost type) once.
+ *   - The HOST is the lowest sessionId among live players (heartbeat seen in the last 3s),
+ *     worked out every frame. Only the host writes the shared fields:
+ *       `game`  {id, v, phase, timers, the ghost's room, evidence found and ruled out, the
+ *                mark, who died or escaped, the reveal}: ONE JSON field, v only goes up
+ *       `ghost` where the ghost is, whether it hunts, its last scare, test progress (10/s)
+ *       `bots`  the bot investigators (10/s)
+ *       `gbox`  the ghost type, SEALED to each player's key (see below)
+ *   - The ghost type is hidden. The host picks it and keeps it in memory; it never goes into
+ *     plain state until the reveal. A sealed copy for each player lets a new host open its
+ *     own copy and carry on (a host who joined too late to have one picks a type that fits
+ *     the evidence so far). The host deals, so it could peek: fine among friends.
+ *   - Evidence: standing in the ghost's room holding a tool tests that evidence. The host
+ *     reads every player's tool and position from `p`; with the right ghost the evidence
+ *     shows up, otherwise after a while it's ruled out. No intent needed.
+ *   - Intents to the host: "mark" {k} (we think it's ghost type k: the final hunt starts)
+ *     and "again". Dying and escaping are decided by the host from everyone's positions.
+ *   - A new round starts when the host bumps game.id; every client then resets.
+ *   - ?attract plays offline with bots only (the preview video is recorded from it).
+ *   - Leaderboard "ghost-score": the round's score (right ghost, evidence, survivors).
+ */
+import * as THREE from "three";
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────────────
+const CONFIG = {
+  seats: 4,               // bot investigators fill the team up to this many
+  briefMs: 4000,          // ms of title before the hunt starts
+  investMs: 300000,       // ms to find the evidence and mark the ghost
+  escapeMs: 25000,        // ms to get out to the van once the ghost is marked
+  resultsMs: 15000,       // ms the results show before the next round
+  walk: 3.6, run: 5.6,    // your speeds, units/s
+  botWalk: 3.3, botRun: 5.0,
+  radius: 0.35,           // how wide a person is, for walls
+  testMs: 10000,          // ms of testing (holding the tool in the ghost's room) to rule an evidence out ...
+  findMs: [2500, 5500],   // ... or this many ms (random in the range) to find it, if the ghost has it
+  sanity: { dark: 0.8, lit: 0.3, ghostRoom: 0.6, outside: -2.5, scare: 5 }, // % lost per second (negative = regained), and per scare nearby
+  huntBelow: 55,          // the ghost can hunt once the team's average sanity is below this (each type shifts it)
+  huntMs: 9000,           // how long one hunt lasts
+  huntGap: [22000, 38000],// ms between hunts
+  ghost: { wander: 1.1, hunt: 4.0, enraged: 4.7, sight: 14, catch: 0.9, actEvery: [6000, 13000] },
+  ambient: 0.9,           // how much you see without a flashlight (0 = pitch black)
+  light: { range: 16, angle: 0.58, power: 60 },
+  shadows: true,          // your own flashlight casts wall shadows
+  board: "ghost-score",
+  tile: 2,                // world units per map character
+  // The house. # wall, . floor, f furniture, o garden, % fence, V the van (solid),
+  // E the van's back door (get here to escape).
+  map: [
+    "%%%%%%%%%%%%%%%%%%%%%%%%%",
+    "%oooooooooVVVVVooooooooo%",
+    "%ooxooooooVVVVVooooooxoo%",
+    "%oooooooooooEooooooooooo%",
+    "%ooooooooooooooooooooooo%",
+    "###########..############",
+    "#f.....#.......#.......f#",
+    "#......#.......#........#",
+    "#..f.......f...#...ff...#",
+    "#......#.......#........#",
+    "#f.....#.......#f.......#",
+    "###.#####.#########.#####",
+    "#.......................#",
+    "#.......................#",
+    "####.#####.#######.##.###",
+    "#f.....#.......#....#..f#",
+    "#......#.......#....#...#",
+    "#..f...#...f...#..f.#...#",
+    "#f.....#.....f.#....#..f#",
+    "#########################",
+  ],
+  // Rooms as tile rectangles [x0, z0, x1, z1]. lit: a lamp is on (sanity drains slower).
+  // haunt: the ghost can live here. floor: the floor color.
+  rooms: [
+    { name: "Living room", r: [1, 6, 6, 10], lit: true, haunt: true, floor: "#6b4a32" },
+    { name: "Hall", r: [8, 6, 14, 10], lit: true, haunt: false, floor: "#5a5048" },
+    { name: "Kitchen", r: [16, 6, 23, 10], lit: true, haunt: true, floor: "#8a8f96" },
+    { name: "Corridor", r: [1, 12, 23, 13], lit: false, haunt: false, floor: "#4a3a30" },
+    { name: "Bedroom", r: [1, 15, 6, 18], lit: false, haunt: true, floor: "#5e4234" },
+    { name: "Nursery", r: [8, 15, 14, 18], lit: false, haunt: true, floor: "#6c5a7a" },
+    { name: "Bathroom", r: [16, 15, 19, 18], lit: false, haunt: true, floor: "#7d8a92" },
+    { name: "Study", r: [21, 15, 23, 18], lit: false, haunt: true, floor: "#4f3b2b" },
+  ],
+};
+
+// ── GHOSTS ──────────────────────────────────────────────────────────────────────────
+// Five evidences, one tool each. Every ghost type leaves exactly three of them.
+const TOOLS = [
+  { key: "EMF", name: "EMF meter", ev: "EMF level 5", color: "#ff5d5d" },
+  { key: "TEMP", name: "Thermometer", ev: "Freezing temps", color: "#7ad8ff" },
+  { key: "RADIO", name: "Spirit radio", ev: "Ghost voice", color: "#ffb347" },
+  { key: "UV", name: "UV light", ev: "Handprints", color: "#b46bff" },
+  { key: "BOOK", name: "Ghost book", ev: "Ghost writing", color: "#f4e7c3" },
+];
+// ev: the three evidences (tool indexes). hunt: shifts the sanity it starts hunting at. speed: hunt speed ×.
+const TYPES = [
+  { name: "Whisperer", ev: [1, 2, 4], note: "Talks a lot, writes a lot.", hunt: 0, speed: 1 },
+  { name: "Cold Lady", ev: [0, 1, 3], note: "Hunts a little sooner.", hunt: 8, speed: 1 },
+  { name: "Rattler", ev: [0, 3, 4], note: "Throws things around.", hunt: 0, speed: 1.05 },
+  { name: "Weeping Child", ev: [1, 2, 3], note: "Slow, but patient.", hunt: 5, speed: 0.9 },
+  { name: "Scribbler", ev: [0, 2, 4], note: "Leaves notes everywhere.", hunt: -5, speed: 1 },
+  { name: "Hollow Man", ev: [0, 1, 2], note: "Fast when it hunts.", hunt: 0, speed: 1.15 },
+  { name: "Lantern Eater", ev: [1, 3, 4], note: "Hates lit rooms.", hunt: 10, speed: 1 },
+  { name: "Grudge", ev: [0, 2, 3], note: "Hunts late, hunts hard.", hunt: -10, speed: 1.1 },
+];
+const VOICES = ["…behind you…", "GET… OUT…", "…so cold…", "…mine…", "…here…", "…leave…"];
+const BOT_NAMES = ["Kit", "Moss", "Juno", "Pip", "Rook", "Ivy"];
+const COLORS = ["#c9b8ff", "#4da6ff", "#ff6fb5", "#52d273", "#ffb347", "#ff6a6a"];
+
+// ── CONNECTION ──────────────────────────────────────────────────────────────────────
+// The builder fills these in for this game. Downloaded from GitHub? Put your own pk_ key here.
+const MP_CONNECT = {
+  key: 'pk_REPLACE_ME',
+  room: 'ghost-hunt',
+  endpoint: 'wss://live.multiplayeragent.com',
+  apiUrl: 'https://api.multiplayeragent.com',
+};
+const PARAMS = new URLSearchParams(location.search), ATTRACT = PARAMS.has("attract");
+
+/** Same shape as the SDK client, kept in this tab: offline play and ?attract. */
+function localRoom() {
+  const id = "local", state = { entities: { players: { [id]: {} } }, shared: {} }, subs = [];
+  let queued = false;
+  const emit = () => { if (!queued) { queued = true; queueMicrotask(() => { queued = false; subs.forEach((f) => f(state)); }); } };
+  const put = (o, k, v) => { if (typeof k === "object") Object.assign(o, k); else o[k] = v; emit(); };
+  return {
+    sessionId: id, state, offline: true,
+    me: { set: (k, v) => put(state.entities.players[id], k, v) },
+    setShared: (k, v) => put(state.shared, k, v),
+    onState: (f) => { subs.push(f); f(state); }, onJoin() {}, onLeave() {}, on() {}, send() {},
+    onDisconnect() {}, onReconnect() {}, leave: async () => {},
+  };
+}
+async function connect() {
+  if (ATTRACT || typeof MP === "undefined") return localRoom();
+  try {
+    const mp = await Promise.race([MP.join({ ...MP_CONNECT }), new Promise((_, no) => setTimeout(() => no(new Error("timed out")), 10000))]);
+    window.mp = mp; // the builder calls window.mp.leave() when the page closes
+    return mp;
+  } catch (e) {
+    console.warn("Playing offline:", e && e.message);
+    return localRoom();
+  }
+}
+const parse = (v, fb) => { if (typeof v !== "string") return fb; try { return JSON.parse(v); } catch { return fb; } };
+const memo = new Map();
+/** A shared JSON field, parsed once per change (read-only: never mutate what this returns). */
+function shared(key, fb) { const raw = S.shared[key], m = memo.get(key); if (m && m.raw === raw) return m.v; const v = parse(raw, fb); memo.set(key, { raw, v }); return v; }
+let net = null, S = { entities: { players: {} }, shared: {} };
+const seenHb = new Map();
+function livePlayers() {
+  const now = performance.now(), out = [];
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    const s = seenHb.get(id);
+    if (!s || s.hb !== p.hb) seenHb.set(id, { hb: p.hb, at: now });
+    if (id === net.sessionId || now - seenHb.get(id).at < 3000) out.push(id);
+  }
+  return out.sort();
+}
+let wakeHold = 0, lastFrameAt = 0; // a tab whose frames stopped (frozen, or in the background) doesn't act as host, nor for 700ms after it wakes (see frame())
+const isHost = () => livePlayers()[0] === net.sessionId && performance.now() >= wakeHold && !(lastFrameAt && performance.now() - lastFrameAt > 1000);
+
+// ── SEALED SECRET ───────────────────────────────────────────────────────────────────
+// Hidden info in a relay room. Everything in room state reaches every client, so the ghost
+// type is written SEALED: encrypted so only one reader can open it. Each player publishes a
+// public key in its own entity (`pk`); the host seals the type to each player's key and writes
+// the boxes into shared `gbox`. A player's game opens its box only when it becomes the host.
+//   - crypto.subtle needs https or localhost. Without it seal()/open() pass the value through.
+//   - NEVER plaintext online: with no key for the recipient seal() returns "" (an empty box).
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const Seal = {
+  pair: null,
+  pub: "",
+  keys: new Map(), // other player's public key -> derived AES key
+  get on() { return !!(window.crypto && crypto.subtle); },
+  /** Make this player's key pair. Returns the public key to publish: me.set("pk", pub). */
+  async init() {
+    if (!this.on) return "";
+    this.pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ["deriveKey"]);
+    this.pub = b64(await crypto.subtle.exportKey("raw", this.pair.publicKey));
+    return this.pub;
+  },
+  async key(otherPub) {
+    let k = this.keys.get(otherPub);
+    if (!k) {
+      const theirs = await crypto.subtle.importKey("raw", unb64(otherPub), { name: "ECDH", namedCurve: "P-256" }, false, []);
+      k = await crypto.subtle.deriveKey({ name: "ECDH", public: theirs }, this.pair.privateKey, { name: "AES-GCM", length: 128 }, false, ["encrypt", "decrypt"]);
+      this.keys.set(otherPub, k);
+    }
+    return k;
+  },
+  /** Seal any JSON value so only the holder of `toPub` (and you) can open it. */
+  async seal(toPub, value) {
+    if (!this.on) return "p:" + JSON.stringify(value);
+    if (!toPub || !this.pair) return ""; // never plaintext: nobody can open an empty box
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await this.key(toPub), new TextEncoder().encode(JSON.stringify(value)));
+    return b64(iv) + "." + b64(ct);
+  },
+  /** Open a box sealed by the player whose public key is `fromPub`. Null if it isn't for you. */
+  async open(fromPub, box) {
+    if (typeof box !== "string") return null;
+    if (box.startsWith("p:")) return JSON.parse(box.slice(2));
+    if (!this.on || !fromPub || !this.pair) return null;
+    try {
+      const [iv, ct] = box.split(".").map(unb64);
+      const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, await this.key(fromPub), ct);
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch { return null; }
+  },
+};
+const pkOf = (id) => (id === net.sessionId ? Seal.pub : S.entities.players?.[id]?.pk);
+
+// ── MAP ─────────────────────────────────────────────────────────────────────────────
+if (ATTRACT) {
+  Object.assign(CONFIG, { briefMs: 300, investMs: 60000, escapeMs: 9000, resultsMs: 2500, testMs: 4000, findMs: [900, 2000], huntGap: [6500, 8000], huntMs: 5000, ambient: 2.1, huntBelow: 101 });
+}
+const MAP = CONFIG.map, MH = MAP.length, MW = MAP[0].length, TS = CONFIG.tile;
+const cell = (cx, cz) => (MAP[cz] && MAP[cz][cx]) || "#";
+const solid = (cx, cz) => "#xf%V".includes(cell(cx, cz));
+const toCell = (v) => Math.floor(v / TS);
+const center = (cx, cz) => ({ x: (cx + 0.5) * TS, z: (cz + 0.5) * TS });
+const find = (ch) => MAP.flatMap((row, z) => [...row].flatMap((c, x) => (c === ch ? [center(x, z)] : [])));
+const EXIT = find("E")[0], VAN = (() => { const p = find("V"); return { x: p.reduce((s, q) => s + q.x, 0) / p.length, z: p.reduce((s, q) => s + q.z, 0) / p.length }; })();
+const HOUSE_Z = MAP.findIndex((r) => r.startsWith("#")) * TS; // everything north of this is the garden
+const wallAt = (x, z) => solid(toCell(x), toCell(z));
+/** The room index at a world spot, or -1 (doorways, the garden). */
+function roomAt(x, z) { const cx = toCell(x), cz = toCell(z); return CONFIG.rooms.findIndex(({ r }) => cx >= r[0] && cx <= r[2] && cz >= r[1] && cz <= r[3]); }
+const roomTiles = CONFIG.rooms.map(({ r }) => { const out = []; for (let z = r[1]; z <= r[3]; z++) for (let x = r[0]; x <= r[2]; x++) if (!solid(x, z)) out.push(center(x, z)); return out; });
+const HOUSE_TILES = roomTiles.flat();
+const inside = (p) => p.z > HOUSE_Z;
+function dist(a, b) { return Math.hypot(a.x - b.x, a.z - b.z); }
+const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const r1 = (v) => Math.round(v * 100) / 100;
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+const between = ([a, b]) => a + Math.random() * (b - a);
+/** Ghost types that still fit what was found and ruled out. */
+const fits = (g) => TYPES.map((T, i) => i).filter((i) => Object.keys(g.found).every((k) => TYPES[i].ev.includes(+k)) && Object.keys(g.ruled).every((k) => !TYPES[i].ev.includes(+k)));
+
+/** Walls block sight; furniture doesn't (it's low). */
+function canSee(a, b) {
+  const d = dist(a, b), n = Math.ceil(d / 0.3);
+  for (let i = 1; i < n; i++) { const t = i / n; if (cell(toCell(a.x + (b.x - a.x) * t), toCell(a.z + (b.z - a.z) * t)) === "#") return false; }
+  return true;
+}
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+/** A walkable route from a to b as tile centres (ending at b), or [] if there is none. */
+function route(a, b) {
+  const sx = toCell(a.x), sz = toCell(a.z), gx = toCell(b.x), gz = toCell(b.z), goal = gx + gz * MW;
+  if (solid(gx, gz)) return [];
+  const prev = new Int32Array(MW * MH).fill(-1), q = [sx + sz * MW];
+  prev[q[0]] = q[0];
+  for (let h = 0; h < q.length && prev[goal] < 0; h++) {
+    const k = q[h], x = k % MW, z = (k / MW) | 0;
+    for (const [dx, dz] of DIRS) {
+      const nx = x + dx, nz = z + dz, n = nx + nz * MW;
+      if (solid(nx, nz) || prev[n] >= 0 || (dx && dz && (solid(x + dx, z) || solid(x, z + dz)))) continue;
+      prev[n] = k; q.push(n);
+    }
+  }
+  if (prev[goal] < 0) return [];
+  const out = [{ x: b.x, z: b.z }];
+  for (let k = prev[goal]; k !== prev[k]; k = prev[k]) out.unshift(center(k % MW, (k / MW) | 0));
+  return out;
+}
+/** Walk an agent ({x, z, h, path}) along its path. False when it has nowhere to go. */
+function follow(a, speed, dt) {
+  const p = a.path[0];
+  if (!p) return false;
+  const dx = p.x - a.x, dz = p.z - a.z, d = Math.hypot(dx, dz), step = speed * dt;
+  if (d <= step) { a.x = p.x; a.z = p.z; a.path.shift(); } else { a.x += (dx / d) * step; a.z += (dz / d) * step; }
+  if (d > 0.01) a.h += angDiff(Math.atan2(dx, dz), a.h) * Math.min(1, dt * 8);
+  return true;
+}
+/** Slide a person along walls. */
+function moveBody(o, dx, dz) {
+  const r = CONFIG.radius, hit = (x, z) => wallAt(x - r, z - r) || wallAt(x + r, z - r) || wallAt(x - r, z + r) || wallAt(x + r, z + r);
+  if (!hit(o.x + dx, o.z)) o.x += dx;
+  if (!hit(o.x, o.z + dz)) o.z += dz;
+}
+
+// ── SCENE ───────────────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.shadowMap.enabled = CONFIG.shadows;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#0e0c18");
+scene.fog = new THREE.Fog("#0e0c18", 22, 50);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 200);
+function fit() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener("resize", fit); addEventListener("orientationchange", fit); fit();
+const moon = new THREE.HemisphereLight("#8e86d8", "#2a1d22", CONFIG.ambient); scene.add(moon);
+
+function canvasTex(w, h, paint, rx, ry) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h; paint(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  if (rx) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); }
+  return t;
+}
+const noise = (c, w, h, n, a) => { for (let i = 0; i < n; i++) { c.fillStyle = `rgba(0,0,0,${Math.random() * a})`; c.fillRect(Math.random() * w, Math.random() * h, 3, 3); } };
+// One floor texture for the whole map: grass outside, each room its own floor inside.
+const PX = 32;
+const floorTex = canvasTex(MW * PX, MH * PX, (c, w, h) => {
+  c.fillStyle = "#2c3a26"; c.fillRect(0, 0, w, h); noise(c, w, h, 6000, 0.3);
+  for (let z = 0; z < MH; z++) for (let x = 0; x < MW; x++) {
+    const ri = roomAt((x + 0.5) * TS, (z + 0.5) * TS), ch = cell(x, z);
+    if (ri < 0 && !".f".includes(ch)) continue;
+    const R = CONFIG.rooms[ri], col = R ? R.floor : "#4a3a30";
+    c.fillStyle = col; c.fillRect(x * PX, z * PX, PX, PX);
+    c.fillStyle = "#0002";
+    if (R && /Kitchen|Bathroom/.test(R.name)) { if ((x + z) % 2) c.fillRect(x * PX, z * PX, PX, PX); }
+    else for (let i = 0; i < PX; i += 8) c.fillRect(x * PX, z * PX + i, PX, 1); // floorboards
+  }
+  noise(c, w, h, 9000, 0.18);
+});
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(MW * TS, MH * TS), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.9 }));
+floor.rotation.x = -Math.PI / 2; floor.position.set((MW * TS) / 2, 0, (MH * TS) / 2); floor.receiveShadow = true; scene.add(floor);
+const lawn = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: "#1d2819", roughness: 1 }));
+lawn.rotation.x = -Math.PI / 2; lawn.position.set((MW * TS) / 2, -0.02, (MH * TS) / 2); scene.add(lawn);
+
+const wallTex = canvasTex(64, 128, (c, w, h) => {
+  c.fillStyle = "#6e5a6e"; c.fillRect(0, 0, w, h);
+  for (let x = 0; x < w; x += 16) { c.fillStyle = "#64506388"; c.fillRect(x, 0, 6, h); }
+  for (let y = 10; y < h - 30; y += 22) for (let x = 8; x < w; x += 16) { c.fillStyle = "#8a74863a"; c.beginPath(); c.arc(x, y, 3, 0, 7); c.fill(); }
+  c.fillStyle = "#3b2a26"; c.fillRect(0, h - 24, w, 24); noise(c, w, h, 300, 0.3);
+});
+const WALL_H = 2.6, walls = find("#"), furni = find("f"), bushes = find("x"), fences = find("%");
+const wallMats = [0, 1, 2, 3, 4, 5].map((i) => (i === 2 ? new THREE.MeshStandardMaterial({ color: "#5e5070", roughness: 1 }) : new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.95 })));
+const wallMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(TS, WALL_H, TS), wallMats, walls.length);
+const furniMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1.6, 0.9, 1.2), new THREE.MeshStandardMaterial({ map: canvasTex(64, 64, (c) => { c.fillStyle = "#5a3a26"; c.fillRect(0, 0, 64, 64); c.fillStyle = "#7a5236"; c.fillRect(4, 4, 56, 24); c.fillRect(4, 34, 56, 26); c.fillStyle = "#c9a36a"; c.fillRect(28, 14, 8, 4); c.fillRect(28, 44, 8, 4); }), roughness: 0.8 }), furni.length);
+const bushMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.9, 10, 8), new THREE.MeshStandardMaterial({ color: "#2f4a2a", roughness: 1 }), bushes.length);
+const fenceMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(TS, 1.0, 0.2), new THREE.MeshStandardMaterial({ color: "#3a3230", roughness: 0.9 }), fences.length);
+const mtx = new THREE.Matrix4();
+walls.forEach((p, i) => wallMesh.setMatrixAt(i, mtx.makeTranslation(p.x, WALL_H / 2, p.z)));
+furni.forEach((p, i) => furniMesh.setMatrixAt(i, mtx.makeRotationY((i % 2) * Math.PI / 2).setPosition(p.x, 0.45, p.z)));
+bushes.forEach((p, i) => bushMesh.setMatrixAt(i, mtx.makeTranslation(p.x, 0.6, p.z)));
+fences.forEach((p, i) => { const side = toCell(p.x) === 0 || toCell(p.x) === MW - 1; fenceMesh.setMatrixAt(i, (side ? mtx.makeRotationY(Math.PI / 2) : mtx.identity()).setPosition(p.x, 0.5, p.z)); });
+wallMesh.castShadow = wallMesh.receiveShadow = furniMesh.castShadow = furniMesh.receiveShadow = true;
+scene.add(wallMesh, furniMesh, bushMesh, fenceMesh);
+
+const glowTex = canvasTex(64, 64, (c) => { const g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, "#fff"); g.addColorStop(0.3, "#ffffff88"); g.addColorStop(1, "#fff0"); c.fillStyle = g; c.fillRect(0, 0, 64, 64); });
+const glow = (color, size, opacity = 1) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity })); s.scale.set(size, size, 1); return s; };
+
+// Lamps in the lit rooms: a real light each, flickering when the ghost is near or hunting.
+const lamps = CONFIG.rooms.map((R, i) => {
+  if (!R.lit) return null;
+  const tiles = roomTiles[i], c = { x: tiles.reduce((s, p) => s + p.x, 0) / tiles.length, z: tiles.reduce((s, p) => s + p.z, 0) / tiles.length };
+  const L = new THREE.PointLight("#ffd9a0", 18, 13, 1.5); L.position.set(c.x, 2.4, c.z); scene.add(L);
+  const bulb = glow("#ffd9a0", 1.8, 0.9); bulb.position.set(c.x, 2.5, c.z); scene.add(bulb);
+  return { L, bulb, room: i };
+});
+// The van: the team's base. Get to its back door to escape.
+const van = new THREE.Group();
+{
+  const vanSide = new THREE.MeshStandardMaterial({ map: canvasTex(256, 96, (c) => { c.fillStyle = "#e9e6ef"; c.fillRect(0, 0, 256, 96); c.fillStyle = "#6a4cff"; c.fillRect(0, 54, 256, 14); c.font = "bold 22px system-ui"; c.fillStyle = "#3a2a8a"; c.textAlign = "center"; c.fillText("SPOOK SEEKERS", 128, 40); }), roughness: 0.5 }), vanTop = new THREE.MeshStandardMaterial({ color: "#d9d6e0", roughness: 0.6 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(9, 3, 3.6), [vanSide, vanSide, vanTop, vanTop, vanSide, vanSide]);
+  body.position.y = 1.9; body.castShadow = true;
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 3.4), new THREE.MeshStandardMaterial({ color: "#d9d6e0" })); cab.position.set(4.8, 1.5, 0);
+  for (const [x, z] of [[-3, -1.8], [3, -1.8], [-3, 1.8], [3, 1.8]]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.4, 14).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: "#1a1a1a" })); w.position.set(x, 0.6, z); van.add(w); }
+  const door = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2, 0.1), new THREE.MeshBasicMaterial({ color: "#a9f0c8" })); door.position.set(0, 1.6, 1.85);
+  const screens = glow("#7af0b0", 5, 0.5); screens.position.set(0, 1.6, 2.2);
+  van.add(body, cab, door, screens);
+}
+van.position.set(VAN.x, 0, VAN.z); scene.add(van);
+const vanLight = new THREE.PointLight("#bfffe0", 22, 14, 1.4); vanLight.position.set(EXIT.x, 3.5, EXIT.z); scene.add(vanLight);
+const exitRing = new THREE.Mesh(new THREE.RingGeometry(1.7, 2, 40), new THREE.MeshBasicMaterial({ color: "#7af0b0", transparent: true, opacity: 0.6 }));
+exitRing.rotation.x = -Math.PI / 2; exitRing.position.set(EXIT.x, 0.04, EXIT.z); scene.add(exitRing);
+
+// Evidence props, shown once found: glowing handprints (best under UV), a written-in book, breath frost.
+const handTex = canvasTex(64, 64, (c) => { c.fillStyle = "#fff"; c.beginPath(); c.ellipse(32, 40, 13, 16, 0, 0, 7); c.fill(); for (let i = 0; i < 4; i++) { c.beginPath(); c.ellipse(19 + i * 9, 16, 3.5, 10, (i - 1.5) * 0.12, 0, 7); c.fill(); } c.beginPath(); c.ellipse(50, 36, 3.5, 9, 0.9, 0, 7); c.fill(); });
+const hands = Array.from({ length: 6 }, () => { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), new THREE.MeshBasicMaterial({ map: handTex, color: "#7dff9e", transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending })); m.rotation.x = -Math.PI / 2; m.visible = false; scene.add(m); return m; });
+const book = new THREE.Group();
+{
+  const pageTex = canvasTex(128, 64, (c) => { c.fillStyle = "#f4e7c3"; c.fillRect(0, 0, 128, 64); c.fillStyle = "#3a1010"; c.font = "bold 14px serif"; c.fillText("GET OUT", 10, 28); c.fillText("~ ~ ~", 74, 40); c.strokeStyle = "#5a1a1a"; c.beginPath(); for (let i = 0; i < 9; i++) c.lineTo(70 + i * 6, 20 + Math.sin(i) * 8); c.stroke(); });
+  const pages = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.55), new THREE.MeshStandardMaterial({ map: pageTex, emissive: "#ffe2b0", emissiveIntensity: 0.35 }));
+  const cover = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.04, 0.6), new THREE.MeshStandardMaterial({ color: "#5a2a1a" })); cover.position.y = -0.04;
+  const shine = glow("#ffe2b0", 1.6, 0.5); shine.position.y = 0.2;
+  book.add(pages, cover, shine);
+  book.visible = false; scene.add(book);
+}
+
+// Particles: a small pool (frost breath, scares, deaths).
+const bits = [];
+function burst(x, y, z, color, n, speed, up = 1) {
+  for (let i = 0; i < n; i++) {
+    const s = glow(color, 0.35 + Math.random() * 0.3); s.position.set(x, y, z); scene.add(s);
+    bits.push({ s, vx: (Math.random() - 0.5) * speed, vy: Math.random() * speed * up, vz: (Math.random() - 0.5) * speed, life: 0.6 + Math.random() * 0.5 });
+  }
+}
+
+// ── PEOPLE ──────────────────────────────────────────────────────────────────────────
+function nameTag(text) {
+  const tex = canvasTex(256, 64, (c) => { c.font = "bold 34px system-ui"; c.textAlign = "center"; c.lineWidth = 6; c.strokeStyle = "#000c"; c.strokeText(text, 128, 44); c.fillStyle = "#fff"; c.fillText(text, 128, 44); });
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); s.scale.set(3, 0.75, 1); s.position.y = 2.4; return s;
+}
+const toolMats = TOOLS.map((T) => new THREE.MeshStandardMaterial({ color: T.color, emissive: T.color, emissiveIntensity: 0.7 }));
+/** An investigator: colored jacket, cap, flashlight, and the tool in hand. */
+function makePerson(color, name) {
+  const g = new THREE.Group(), body = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.38, 0.95, 10), mat); torso.position.y = 0.75;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.31, 14, 10), new THREE.MeshStandardMaterial({ color: "#f1d2b5", roughness: 0.7 })); head.position.y = 1.5;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.14, 12), new THREE.MeshStandardMaterial({ color: "#2a2438" })); cap.position.y = 1.72;
+  const brim = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 0.3), cap.material); brim.position.set(0, 1.67, 0.3);
+  const tool = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.28, 0.12), toolMats[0]); tool.position.set(-0.32, 1.0, 0.32);
+  const lens = glow("#fff6d0", 0.6); lens.position.set(0.3, 1.0, 0.5);
+  body.add(torso, head, cap, brim, tool, lens); torso.castShadow = head.castShadow = true;
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.5, 16), new THREE.MeshBasicMaterial({ color: "#000", transparent: true, opacity: 0.35 }));
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.02;
+  g.add(body, shadow);
+  if (name) g.add(nameTag(name));
+  g.userData = { body, tool, lens, mat };
+  scene.add(g); return g;
+}
+function pose(g, dead, tool, moving, t) {
+  const u = g.userData;
+  u.body.rotation.x = dead ? -Math.PI / 2 : 0; u.body.position.y = dead ? 0.3 : moving ? Math.abs(Math.sin(t * 10)) * 0.07 : 0; u.body.position.z = dead ? -0.7 : 0;
+  u.tool.material = toolMats[tool] || toolMats[0];
+}
+const views = new Map(); // id -> { g, x, z, h, fresh } for everyone but me
+function viewOf(id, color, name) {
+  let v = views.get(id);
+  if (!v) { v = { g: makePerson(color, ATTRACT ? "" : name), x: 0, z: 0, h: 0, fresh: true }; views.set(id, v); }
+  return v;
+}
+function ease(v, x, z, h, dt) {
+  if (v.fresh) { v.x = x; v.z = z; v.h = h; v.fresh = false; }
+  const k = 1 - Math.pow(0.0008, dt);
+  v.x += (x - v.x) * k; v.z += (z - v.z) * k; v.h += angDiff(h, v.h) * k;
+  v.g.position.set(v.x, 0, v.z); v.g.rotation.y = v.h;
+}
+
+// The ghost: a pale, see-through shape. Mostly invisible; it shows when it scares someone and when it hunts.
+const ghostMat = new THREE.MeshStandardMaterial({ color: "#dfe8ff", emissive: "#9fb4ff", emissiveIntensity: 0.6, transparent: true, opacity: 0, depthWrite: false });
+const ghostObj = new THREE.Group();
+{
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.75, 2.2, 14, 1, true), ghostMat); robe.position.y = 1.2;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), ghostMat); head.position.y = 2.35;
+  const eyeMat = new THREE.MeshBasicMaterial({ color: "#000", transparent: true, opacity: 0 });
+  for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), eyeMat); e.position.set(s * 0.15, 2.4, 0.36); ghostObj.add(e); }
+  for (const s of [-1, 1]) { const a = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.1, 8), ghostMat); a.position.set(s * 0.55, 1.6, 0.25); a.rotation.x = -1.1; ghostObj.add(a); }
+  const haze = glow("#a8b8ff", 4.5, 0); haze.position.y = 1.4;
+  ghostObj.add(robe, head, haze); ghostObj.userData = { haze, eyeMat };
+  scene.add(ghostObj);
+}
+const ghostView = { x: 0, z: 0, h: 0, fresh: true };
+
+// Flashlights: one spotlight per nearby person (a fixed pool, so the scene never recompiles).
+const torches = Array.from({ length: 4 }, (_, i) => {
+  const L = new THREE.SpotLight("#fff1cf", CONFIG.light.power, CONFIG.light.range, CONFIG.light.angle, 0.45, 1.3);
+  if (i === 0 && CONFIG.shadows) { L.castShadow = true; L.shadow.mapSize.set(512, 512); L.shadow.camera.near = 0.3; L.shadow.bias = -0.002; }
+  scene.add(L, L.target); return L;
+});
+function aimTorch(L, c, t, i, flicker) {
+  const fl = c.on ? (0.92 + 0.08 * Math.sin(t * 23 + i * 5) * Math.sin(t * 3.1 + i)) * (flicker && Math.sin(t * 37 + i) > 0.3 ? 0.15 : 1) : 0;
+  L.intensity = CONFIG.light.power * fl; L.color.set(c.uv ? "#b46bff" : "#fff1cf");
+  L.position.set(c.x + Math.sin(c.h) * 0.3, 1.1, c.z + Math.cos(c.h) * 0.3);
+  L.target.position.set(c.x + Math.sin(c.h) * 6, 0, c.z + Math.cos(c.h) * 6);
+}
+
+// ── HUNT (HOST) ─────────────────────────────────────────────────────────────────────
+// host.type is THE secret: the ghost type index, for round host.typeFor. Never written in plain until the reveal.
+const host = { last: null, was: false, bots: new Map(), ghost: null, type: -1, typeFor: -1, opening: false, sealedFor: "", probe: [0, 0, 0, 0, 0], findAt: [], again: false, lastPub: 0, lastPos: new Map(), known: false, markAt: 0 };
+/** The round as state has it, or the host's own newer write that hasn't come back yet. `v` only goes up. */
+function game() { const g = shared("game", null); return host.last && isHost() && (!g || host.last.v > g.v) ? host.last : g; }
+function writeGame(g) { g = { ...g, v: Math.max(game()?.v ?? 0, host.last?.v ?? 0) + 1 }; host.last = g; net.setShared("game", JSON.stringify(g)); return g; }
+
+function startRound(id) {
+  const haunts = CONFIG.rooms.map((R, i) => i).filter((i) => CONFIG.rooms[i].haunt), room = ATTRACT ? 0 : pick(haunts), t = Date.now(); // the preview keeps to the living room, next to the door
+  host.type = Math.floor(Math.random() * TYPES.length); host.typeFor = id; host.sealedFor = "";
+  host.probe = [0, 0, 0, 0, 0]; host.findAt = TOOLS.map(() => between(CONFIG.findMs)); host.known = ATTRACT; host.markAt = 0;
+  const g = writeGame({ id, phase: "brief", room, startAt: t + CONFIG.briefMs, endsAt: t + CONFIG.briefMs + CONFIG.investMs, found: {}, ruled: {}, mark: -1, markBy: "", dead: {}, out: {}, reveal: -1, score: 0 });
+  const home = pick(roomTiles[room]);
+  host.ghost = { x: home.x, z: home.z, h: 0, s: "idle", path: [], until: 0, nextAct: t + CONFIG.briefMs + between(CONFIG.ghost.actEvery), actAt: 0, nextHunt: t + CONFIG.briefMs + between(CONFIG.huntGap), tgt: "", pause: 0 };
+  let n = 0;
+  for (const b of host.bots.values()) Object.assign(b, spawnSpot(4 + n++), { path: [], goal: null, mode: "search", think: 0, tool: n % TOOLS.length, san: 100, seen: new Set() });
+  sealType(g);
+  return g;
+}
+/** Spot n near the van's back door (players take 0-3, bots 4 and up). */
+const spawnSpot = (n) => ({ x: EXIT.x + Math.sin(n * 2.4) * 1.8 * (n ? 1 : 0), z: EXIT.z + 1.5 + Math.cos(n * 2.4) * 0.7 * (n ? 1 : 0), h: 0 });
+/** Seal the ghost type to every player with a key (again whenever a new key shows up). */
+async function sealType(g) {
+  if (net.offline || host.typeFor !== g.id) return;
+  const ids = livePlayers().filter((id) => pkOf(id)), key = g.id + ":" + ids.join(",") + ":" + Seal.pub;
+  if (host.sealedFor === key) return;
+  host.sealedFor = key;
+  const box = {};
+  for (const id of ids) box[id] = await Seal.seal(pkOf(id), { g: g.id, type: host.type });
+  if (!isHost() || game()?.id !== g.id) return; // the room moved on while we sealed
+  net.setShared("gbox", JSON.stringify({ g: g.id, pk: Seal.pub, box }));
+}
+/** Become host: take over the round, the ghost and the bots exactly as state has them, and open my sealed copy of the type. */
+function adopt() {
+  host.was = true; host.bots.clear();
+  for (const b of shared("bots", [])) host.bots.set(b.i, { id: b.i, name: b.n, color: b.c, x: b.x, z: b.z, h: b.h, tool: b.t, san: b.s ?? 100, path: [], goal: null, mode: "search", think: 0, seen: new Set() });
+  const gs = shared("ghost", null), g = game(), t = Date.now();
+  if (g && gs) {
+    host.ghost = { x: gs.x, z: gs.z, h: gs.h, s: gs.s, path: [], until: gs.u || 0, nextAct: t + between(CONFIG.ghost.actEvery), actAt: gs.a || 0, nextHunt: gs.nh || t + between(CONFIG.huntGap), tgt: "", pause: 0 };
+    host.probe = (gs.pr || [0, 0, 0, 0, 0]).map((p) => (p / 100) * CONFIG.testMs);
+  } else if (g && !host.ghost) { const p = pick(roomTiles[g.room]); host.ghost = { x: p.x, z: p.z, h: 0, s: "idle", path: [], until: 0, nextAct: t + 5000, actAt: 0, nextHunt: t + between(CONFIG.huntGap), tgt: "", pause: 0 }; }
+  if (g && g.phase === "escape") host.ghost.s = "hunt"; // the final hunt never stops
+  if (g && host.typeFor !== g.id) { host.type = -1; host.findAt = TOOLS.map(() => between(CONFIG.findMs)); host.known = Object.keys(g.found).length > 0; openType(g); }
+}
+/** Open my sealed copy of the ghost type. With no copy (I joined too late), pick a type that fits the evidence so far. */
+async function openType(g) {
+  if (host.opening) return;
+  host.opening = true;
+  const B = shared("gbox", null), v = B && B.g === g.id && B.box[net.sessionId] ? await Seal.open(B.pk, B.box[net.sessionId]) : null;
+  host.opening = false;
+  if (game()?.id !== g.id || host.typeFor === g.id) return;
+  host.type = v && v.g === g.id ? v.type : pick(fits(g).length ? fits(g) : TYPES.map((T, i) => i));
+  host.typeFor = g.id; host.sealedFor = "";
+}
+function botList() {
+  if (isHost() && host.was) return [...host.bots.values()].map((b) => ({ i: b.id, n: b.name, c: b.color, x: b.x, z: b.z, h: b.h, t: b.tool, s: Math.round(b.san), mv: b.mv ? 1 : 0 })); // host.was: adopted (not leftovers from an earlier turn as host)
+  return shared("bots", []);
+}
+function ghostState() { if (isHost() && host.was && host.ghost) { const G = host.ghost; return { x: G.x, z: G.z, h: G.h, s: G.s, a: G.actAt, pr: host.probe.map((p) => Math.min(100, Math.round((100 * p) / CONFIG.testMs))) }; } return shared("ghost", null); }
+const posCache = new Map();
+/** Another player's packed `p` field, parsed once per change. */
+function posOf(id, p) { let c = posCache.get(id); if (!c || c.raw !== p.p) { c = { raw: p.p, v: parse(p.p, null) }; posCache.set(id, c); } return c.v; }
+/** The whole team as { id, name, color, x, z, h, tool, san, moving, bot, mine }. */
+function people() {
+  const out = [], live = new Set(livePlayers());
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    if (id === net.sessionId) { out.push({ id, name: myName, color: myColor, x: me.x, z: me.z, h: me.h, tool: me.tool, san: me.san, moving: me.mv, mine: true }); continue; }
+    const q = posOf(id, p);
+    if (live.has(id) && q) out.push({ id, name: p.n || "Player", color: p.c || "#ccc", x: q.x, z: q.z, h: q.h, tool: q.t || 0, san: q.s ?? 100, moving: !!q.m });
+  }
+  for (const b of botList()) out.push({ id: b.i, name: b.n, color: b.c, x: b.x, z: b.z, h: b.h, tool: b.t || 0, san: b.s ?? 100, moving: !!b.mv, bot: true });
+  return out;
+}
+
+function hostTick(dt, now) {
+  if (!host.was) adopt();
+  let g = game();
+  if (!g) g = startRound(1);
+  const t = Date.now(), G = clone(g);
+  let dirty = fillBots(G);
+  sealType(g);
+  const all = people(), up = all.filter((c) => !G.dead[c.id] && !G.out[c.id]);
+  for (const c of all) host.lastPos.set(c.id, { x: c.x, z: c.z });
+  if (G.phase === "brief" && t >= G.startAt) { G.phase = "invest"; dirty = true; }
+  if (G.phase === "invest") {
+    dirty = testEvidence(dt, G, up) || dirty;
+    if (ATTRACT && fits(G).length === 1 && !host.markAt) host.markAt = t + 1500; // a bot marks it once it's certain (only in the preview)
+    if (host.markAt && t > host.markAt) { host.markAt = 0; applyMark(G, fits(G)[0], pick(botList()).n); dirty = true; }
+    if (t >= G.endsAt) { applyMark(G, -1, ""); dirty = true; }
+  }
+  if (G.phase === "invest" || G.phase === "escape") dirty = ghostTick(dt, G, up, t) || dirty;
+  if (G.phase === "escape") {
+    for (const c of up) if (!inside(c) && dist(c, EXIT) < 6) { G.out[c.id] = 1; dirty = true; }
+    if (t >= G.endsAt || !all.some((c) => !G.dead[c.id] && !G.out[c.id])) { reveal(G, all, t); dirty = true; }
+  }
+  if (G.phase === "invest" && !all.some((c) => !G.dead[c.id])) { reveal(G, all, t); dirty = true; }
+  if (G.phase === "reveal" && (t >= G.nextAt || host.again)) { host.again = false; startRound(G.id + 1); return publish(now, true); }
+  host.again = false;
+  dirty = botsTick(dt, G, t) || dirty;
+  if (dirty) writeGame(G);
+  publish(now, false);
+}
+/** Someone holding the right tool in the ghost's room: find the evidence, or rule it out. */
+function testEvidence(dt, G, up) {
+  if (host.typeFor !== G.id) return false; // still opening my sealed copy of the type
+  let dirty = false;
+  for (const c of up) {
+    const k = c.tool;
+    if (roomAt(c.x, c.z) !== G.room || G.found[k] || G.ruled[k]) continue;
+    host.probe[k] += dt * 1000;
+    host.known = true;
+    if (TYPES[host.type].ev.includes(k) && host.probe[k] >= host.findAt[k]) { G.found[k] = c.name; host.probe[k] = 0; dirty = true; }
+    else if (host.probe[k] >= CONFIG.testMs) { G.ruled[k] = 1; host.probe[k] = 0; dirty = true; }
+  }
+  return dirty;
+}
+/** A "mark" intent (or the host's own, or a bot's in the preview): the final hunt begins. */
+function applyMark(G, k, by) {
+  Object.assign(G, { mark: k, markBy: by, phase: "escape", phaseAt: Date.now(), endsAt: Date.now() + CONFIG.escapeMs });
+  Object.assign(host.ghost, { s: "hunt", until: Infinity, path: [], tgt: "" });
+}
+/** The round is over: the type finally goes into plain state, with the score. */
+function reveal(G, all, t) {
+  const right = G.mark === host.type && host.type >= 0, outN = Object.keys(G.out).length;
+  Object.assign(G, { phase: "reveal", reveal: host.type, right: right ? 1 : 0, nextAt: t + CONFIG.resultsMs, score: (right ? 100 : 0) + 20 * Object.keys(G.found).length + 25 * outN, crew: all.length });
+  host.ghost.s = "idle"; host.ghost.until = 0;
+}
+/** ~10/s: one message for the ghost, one for all the bots. */
+function publish(now, force) {
+  if (!force && now - host.lastPub < 100) return;
+  host.lastPub = now;
+  const G = host.ghost;
+  if (G) net.setShared("ghost", JSON.stringify({ ...ghostState(), x: r1(G.x), z: r1(G.z), h: r1(G.h), u: G.until === Infinity ? 0 : G.until, nh: G.nextHunt }));
+  net.setShared("bots", JSON.stringify(botList().map((b) => ({ ...b, x: r1(b.x), z: r1(b.z), h: r1(b.h) }))));
+}
+
+/** Bots fill the team up to CONFIG.seats. */
+function fillBots(G) {
+  const want = Math.max(0, CONFIG.seats - livePlayers().length);
+  let dirty = false;
+  while (host.bots.size > want) {
+    const id = [...host.bots.keys()].pop();
+    if (G.dead[id] || G.out[id]) { delete G.dead[id]; delete G.out[id]; dirty = true; }
+    host.bots.delete(id);
+  }
+  while (host.bots.size < want) {
+    const used = new Set([...host.bots.values()].map((b) => b.name)), name = BOT_NAMES.find((n) => !used.has(n)) || "Bot";
+    const usedC = new Set(people().map((p) => p.color)), id = "b" + Math.random().toString(36).slice(2, 6);
+    host.bots.set(id, { id, name, color: COLORS.find((c) => !usedC.has(c)) || COLORS[5], ...spawnSpot(4 + host.bots.size), tool: host.bots.size % TOOLS.length, san: 100, path: [], goal: null, mode: "search", think: 0, seen: new Set() });
+  }
+  return dirty;
+}
+
+/** The ghost: drifts around its room, scares people now and then, and hunts when the team's sanity is low. */
+function ghostTick(dt, G, up, t) {
+  const gh = host.ghost, C = CONFIG.ghost, T = TYPES[Math.max(0, host.type)];
+  let dirty = false;
+  const avg = up.length ? up.reduce((s, c) => s + c.san, 0) / up.length : 100;
+  if (gh.s === "idle" && G.phase === "invest" && t > gh.nextHunt && avg < CONFIG.huntBelow + T.hunt) { Object.assign(gh, { s: "hunt", until: t + CONFIG.huntMs, path: [], tgt: "" }); gh.nextHunt = t + CONFIG.huntMs + between(CONFIG.huntGap); }
+  if (gh.s === "hunt" && G.phase !== "escape" && t > gh.until) { Object.assign(gh, { s: "idle", path: [] }); }
+  if (t < gh.pause) return false;
+  if (gh.s === "idle") {
+    if (t > gh.nextAct) { gh.actAt = t; gh.nextAct = t + between(C.actEvery); for (const b of host.bots.values()) if (dist(b, gh) < 6) b.san = Math.max(0, b.san - CONFIG.sanity.scare); }
+    if (!gh.path.length) { const r = Math.random() < 0.85 ? roomTiles[G.room] : HOUSE_TILES; gh.path = route(gh, pick(r)); }
+    follow(gh, C.wander, dt);
+    return false;
+  }
+  // Hunting: chase who it sees inside the house, otherwise roam toward the last place it saw someone.
+  const prey = up.filter((c) => inside(c) && dist(c, gh) < C.sight && canSee(gh, c)).sort((a, b) => dist(a, gh) - dist(b, gh))[0];
+  if (prey && (prey.id !== gh.tgt || !gh.path.length || Math.random() < dt * 3)) { gh.tgt = prey.id; gh.path = route(gh, prey); }
+  if (!gh.path.length) gh.path = route(gh, pick(HOUSE_TILES));
+  follow(gh, (G.phase === "escape" ? C.enraged : C.hunt) * T.speed, dt);
+  const caught = up.find((c) => inside(c) && dist(c, gh) < C.catch);
+  if (caught) {
+    G.dead[caught.id] = 1; dirty = true; gh.tgt = ""; gh.path = []; gh.pause = t + 1500;
+    if (G.phase === "invest") { gh.s = "idle"; gh.until = 0; }
+  }
+  return dirty;
+}
+
+/** Bot investigators (and your own player in ?attract): search for the cold room, test evidence, flee hunts, escape. */
+function botsTick(dt, G, t) {
+  const agents = [...host.bots.values()];
+  if (ATTRACT) agents.push(me);
+  for (const b of agents) {
+    b.mv = false;
+    if (G.dead[b.id] || G.out[b.id] || (G.phase !== "invest" && G.phase !== "escape")) continue;
+    if (b !== me) b.san = Math.max(0, Math.min(100, b.san - sanityRate(b, G) * dt));
+    if (t > b.think) { b.think = t + 400 + Math.random() * 300; botThink(b, G); }
+    const fast = b.mode === "flee" || b.mode === "escape";
+    if (follow(b, b === me ? (fast ? CONFIG.run : CONFIG.walk) : fast ? CONFIG.botRun : CONFIG.botWalk, dt)) b.mv = true;
+    else if (b.mode === "test") b.h += dt * 1.2; // sweep the tool around the room
+  }
+  return false;
+}
+function botThink(b, G) {
+  const gh = host.ghost, ri = roomAt(b.x, b.z);
+  if (b.seen && ri >= 0) b.seen.add(ri);
+  if (ri === G.room) host.known = true; // the thermometer gave it away
+  let mode = "search", goal = null;
+  const hunting = gh.s === "hunt";
+  if (G.phase === "escape") { mode = "escape"; goal = { x: EXIT.x + (Math.random() - 0.5) * 2, z: EXIT.z }; }
+  else if (hunting && inside(b) && (dist(gh, b) < 9 || gh.tgt === b.id)) { mode = "flee"; goal = { x: EXIT.x, z: EXIT.z + 2 }; }
+  else if (hunting && !inside(b)) { mode = "wait"; goal = b.goal && b.mode === "wait" ? b.goal : { x: b.x, z: b.z }; }
+  else if (host.known) {
+    const open = TOOLS.map((T, k) => k).filter((k) => !G.found[k] && !G.ruled[k]);
+    const others = new Set([...host.bots.values(), ...(ATTRACT ? [me] : [])].filter((o) => o !== b && roomAt(o.x, o.z) === G.room).map((o) => o.tool));
+    if (open.length && (!open.includes(b.tool) || others.has(b.tool))) b.tool = open.find((k) => !others.has(k)) ?? open[0];
+    mode = "test";
+    goal = ri === G.room && b.mode === "test" && b.goal ? b.goal : pick(roomTiles[G.room]);
+  } else {
+    const rooms = CONFIG.rooms.map((R, i) => i).filter((i) => !b.seen.has(i) && i !== 3);
+    goal = b.mode === "search" && b.goal && b.path.length ? b.goal : pick(roomTiles[rooms.length ? pick(rooms) : pick(CONFIG.rooms.map((R, i) => i))]);
+  }
+  const same = b.goal && b.mode === mode && toCell(goal.x) === toCell(b.goal.x) && toCell(goal.z) === toCell(b.goal.z);
+  b.mode = mode; b.goal = goal;
+  if (!same) b.path = route(b, goal);
+}
+/** % of sanity lost per second where you stand (negative = regained, outside). */
+function sanityRate(p, G) {
+  if (!inside(p)) return CONFIG.sanity.outside;
+  const ri = roomAt(p.x, p.z), lit = ri >= 0 && CONFIG.rooms[ri].lit;
+  return (lit ? CONFIG.sanity.lit : CONFIG.sanity.dark) + (ri === G.room ? CONFIG.sanity.ghostRoom : 0);
+}
+
+// ── ME ──────────────────────────────────────────────────────────────────────────────
+const FRIENDLY = ["Brave", "Quiet", "Lucky", "Swift", "Sly", "Bold"], ANIMALS = ["Otter", "Fox", "Moth", "Owl", "Badger", "Hare"];
+const myName = (() => { try { return localStorage.getItem("mpa-name") || ""; } catch { return ""; } })() || FRIENDLY[Math.floor(Math.random() * 6)] + " " + ANIMALS[Math.floor(Math.random() * 6)];
+let myColor = COLORS[0]; // picked on join: the first color nobody in the room has
+const me = { id: "", x: EXIT.x, z: EXIT.z + 1.5, h: 0, tool: 0, san: 100, mv: false, roundId: -1, lastSend: 0, path: [], goal: null, mode: "search", think: 0, seen: new Set(), g: null, firstAt: 0, lastAct: 0 };
+const input = { up: false, down: false, left: false, right: false, run: false };
+const aim = { on: false, nx: 0, ny: 0 }, stick = { id: -1, ox: 0, oy: 0, x: 0, y: 0 };
+const ray = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hitPt = new THREE.Vector3();
+
+function myTick(dt, g, gs) {
+  if (me.roundId !== g.id) { me.roundId = g.id; Object.assign(me, spawnSpot(Math.max(0, livePlayers().indexOf(net.sessionId)) % 4), { san: 100, path: [], goal: null, seen: new Set() }); me.firstAt = 0; closeJournal(); }
+  const out = g.dead[net.sessionId] || g.out[net.sessionId], playing = g.phase === "invest" || g.phase === "escape";
+  if (!ATTRACT) {
+    let mx = (input.right ? 1 : 0) - (input.left ? 1 : 0) + stick.x, mz = (input.down ? 1 : 0) - (input.up ? 1 : 0) + stick.y;
+    const len = Math.hypot(mx, mz);
+    if (len > 1) { mx /= len; mz /= len; }
+    me.mv = !g.dead[net.sessionId] && g.phase !== "reveal" && len > 0.15;
+    if (me.mv) {
+      moveBody(me, mx * (input.run ? CONFIG.run : CONFIG.walk) * dt, mz * (input.run ? CONFIG.run : CONFIG.walk) * dt);
+      if (!aim.on) me.h += angDiff(Math.atan2(mx, mz), me.h) * Math.min(1, dt * 10);
+    }
+    if (aim.on && !g.dead[net.sessionId]) { ray.setFromCamera({ x: aim.nx, y: aim.ny }, camera); if (ray.ray.intersectPlane(floorPlane, hitPt)) me.h = Math.atan2(hitPt.x - me.x, hitPt.z - me.z); }
+  }
+  // Sanity: drains in the house (faster in the dark and in the ghost's room), comes back outside; scares cost a chunk.
+  if (playing && !out) me.san = Math.max(0, Math.min(100, me.san - sanityRate(me, g) * dt));
+  if (gs && gs.a && gs.a !== me.lastAct) { if (me.lastAct && dist(gs, me) < 6 && playing) { me.san = Math.max(0, me.san - CONFIG.sanity.scare); sound("scare"); } me.lastAct = gs.a; }
+  const now = performance.now();
+  if (now - me.lastSend > 80) {
+    me.lastSend = now;
+    net.me.set("p", JSON.stringify({ x: r1(me.x), z: r1(me.z), h: r1(me.h), t: me.tool, s: Math.round(me.san), m: me.mv ? 1 : 0, g: g.id }));
+  }
+}
+function setTool(k) { me.tool = k; sound("click"); drawTools(); }
+/** A "mark" intent from a player: only during the investigation, only a real type. */
+function markIntent(k, by) {
+  const g = game();
+  if (!g || g.phase !== "invest" || !(k >= 0 && k < TYPES.length)) return;
+  const G = clone(g); applyMark(G, k, by); writeGame(G);
+}
+
+// ── HUD & RESULTS ───────────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const fmt = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+let board = null, boardFor = -1, toastUntil = 0, dropped = false, picked = -1;
+function toast(text) { $("toast").textContent = text; $("toast").classList.add("on"); toastUntil = performance.now() + 2200; }
+function drawTools() {
+  const g = game();
+  $("tools").innerHTML = TOOLS.map((T, k) => `<button data-k="${k}" class="${k === me.tool ? "on" : ""} ${g && g.found[k] ? "done" : g && g.ruled[k] ? "ruled" : ""}"><b>${k + 1} </b>${T.key}</button>`).join("");
+}
+$("tools").addEventListener("pointerdown", (e) => { const b = e.target.closest("button"); if (b) { e.preventDefault(); unlockAudio(); setTool(+b.dataset.k); } });
+/** What your tool reads right now. Ghost room + found evidence = the real thing. */
+function reading(g, gs, t) {
+  const ri = roomAt(me.x, me.z), inRoom = ri === g.room, k = me.tool, wob = Math.sin(t * 1.7) * 0.6;
+  if (k === 0) { // EMF: louder near the ghost, spikes when it acts, 5 only if the ghost has it
+    const d = gs ? dist(gs, me) : 99, fresh = gs && Date.now() - gs.a < 2500 && d < 6;
+    const lvl = inRoom && g.found[0] && Math.sin(t * 3) > -0.2 ? 5 : fresh ? 4 : d < 4 ? 3 : d < 8 ? 2 : 1;
+    return { text: `EMF ${"▮".repeat(lvl)}${"▯".repeat(5 - lvl)} ${lvl}`, hot: lvl >= 4 };
+  }
+  if (k === 1) { // Thermometer: the ghost's room is cold; freezing if it has the evidence
+    const base = !inside(me) ? 9 : ri < 0 ? 14 : inRoom ? (g.found[1] ? -2.5 : 3.5) : CONFIG.rooms[ri].lit ? 18 : 14;
+    return { text: `🌡 ${(base + wob).toFixed(1)}°C`, hot: inRoom };
+  }
+  if (k === 2) return inRoom && g.found[2] ? { text: `📻 "${VOICES[Math.floor(t / 2.5) % VOICES.length]}"`, hot: true } : { text: inRoom ? "📻 static… ask it something" : "📻 static…", hot: false };
+  if (k === 3) return { text: inRoom && g.found[3] ? "UV: handprints!" : "UV: nothing glows here", hot: inRoom && !!g.found[3] };
+  return { text: inRoom && g.found[4] ? "📖 Something wrote in the book!" : "📖 The book is blank", hot: inRoom && !!g.found[4] };
+}
+function hud(g, gs) {
+  const t = Date.now(), all = people();
+  if (performance.now() > toastUntil) $("toast").classList.remove("on");
+  const found = Object.keys(g.found).length;
+  if (ATTRACT) { for (const id of ["team", "big", "msg", "net", "clock", "readText"]) $(id).textContent = ""; $("evText").textContent = `Evidence ${found} / 3`; return; }
+  const myOut = g.dead[net.sessionId] || g.out[net.sessionId];
+  $("evText").textContent = `Evidence ${found} / 3 · Sanity ${Math.round(me.san)}%`;
+  $("sanBar").style.width = me.san + "%"; $("sanBar").classList.toggle("low", me.san < CONFIG.huntBelow);
+  const left = g.endsAt - t;
+  $("clock").textContent = g.phase === "invest" ? `${fmt(Math.max(0, left))} to name the ghost` : g.phase === "escape" ? `GET TO THE VAN: ${fmt(Math.max(0, left))}` : "";
+  $("clock").classList.toggle("late", g.phase === "escape" || (g.phase === "invest" && left < 30000));
+  $("team").innerHTML = all.map((c) => `<div class="${c.mine ? "me" : ""} ${g.dead[c.id] ? "dead" : ""}">${esc(c.mine ? "You" : c.name)} ${g.dead[c.id] ? "💀" : g.out[c.id] ? "🚐" : Math.round(c.san) + "%"}</div>`).join("");
+  $("big").innerHTML = g.phase === "brief" ? `Ghost Hunt<small>Find the ghost's cold room. Test with your tools. Name it in the journal, then run.</small>` : "";
+  let msg = "";
+  if (g.phase === "invest") {
+    if (!me.firstAt) me.firstAt = t;
+    if (g.dead[net.sessionId]) msg = "The ghost got you. Watch your team: they can still win.";
+    else if (gs && gs.s === "hunt") msg = "IT'S HUNTING! Run outside or keep away from it.";
+    else if (t - me.firstAt < 12000) msg = touchUI ? "Left thumb walks · tap a tool below · the ghost's room is cold" : "WASD walk · mouse aims · 1–5 pick a tool · J journal · the ghost's room is cold";
+  } else if (g.phase === "escape") msg = myOut ? (g.out[net.sessionId] ? "You made it out!" : "") : `${g.markBy ? esc(g.markBy) + " marked it. " : ""}It's furious. Get to the van!`;
+  $("msg").textContent = msg;
+  const R = reading(g, gs, performance.now() / 1000), pr = gs && gs.pr ? gs.pr[me.tool] : 0, inRoom = roomAt(me.x, me.z) === g.room;
+  const status = g.found[me.tool] ? ` · ✓ found by ${esc(g.found[me.tool])}` : g.ruled[me.tool] ? ` · ✗ no ${TOOLS[me.tool].ev.toLowerCase()}` : inRoom && pr > 0 ? ` · testing ${pr}%` : "";
+  $("readText").textContent = R.text + status;
+  $("read").style.borderColor = R.hot ? "#9ff7c4" : "#ffffff22";
+  $("probe").hidden = !(inRoom && pr > 0 && !g.found[me.tool] && !g.ruled[me.tool]); $("probeBar").style.width = pr + "%";
+  const n = livePlayers().length;
+  $("net").textContent = net.offline ? "Offline: playing with bots" : dropped ? "Reconnecting…" : `Online · ${n} player${n === 1 ? "" : "s"}${isHost() ? " · you run the ghost" : ""}`;
+  $("jbtn").hidden = g.phase !== "invest";
+  if (!$("journal").hidden) drawJournal(g);
+  $("over").hidden = g.phase !== "reveal";
+  if (g.phase === "reveal") {
+    const T = TYPES[g.reveal];
+    $("overTitle").textContent = T ? `It was the ${T.name}!` : "The ghost got away";
+    $("overLine").textContent = g.mark < 0 ? "Nobody named it in time." : `${g.markBy ? g.markBy + " marked" : "You marked"} the ${TYPES[g.mark].name}: ${g.right ? "right! ✓" : "wrong ✗"}`;
+    $("overScore").textContent = `Evidence ${found} · made it out ${Object.keys(g.out).length}/${g.crew || all.length} · score ${g.score}`;
+    $("next").textContent = `Next house in ${Math.max(0, Math.ceil((g.nextAt - t) / 1000))}s`;
+    if (boardFor !== g.id) { boardFor = g.id; showBoard(g); }
+  }
+}
+let journalKey = "";
+function drawJournal(g) {
+  const key = JSON.stringify([g.found, g.ruled, picked]);
+  if (key === journalKey) return; // redraw only on a change, so a click never lands on a replaced button
+  journalKey = key;
+  const ok = new Set(fits(g));
+  $("jEv").innerHTML = TOOLS.map((T, k) => `<span class="${g.found[k] ? "y" : g.ruled[k] ? "n" : ""}">${g.found[k] ? "✓ " : ""}${T.ev}</span>`).join("");
+  $("jList").innerHTML = TYPES.map((T, i) => `<button class="gh ${ok.has(i) ? "" : "no"} ${picked === i ? "sel" : ""}" data-i="${i}"><span>${T.name}<small>${T.note}</small></span><i>${T.ev.map((k) => TOOLS[k].key).join(" · ")}</i></button>`).join("");
+  $("mark").disabled = picked < 0;
+  $("mark").textContent = picked < 0 ? "Pick a ghost" : `Mark the ${TYPES[picked].name} and run`;
+}
+function openJournal() { const g = game(); if (!g || g.phase !== "invest") return; picked = -1; journalKey = ""; $("journal").hidden = false; drawJournal(g); }
+function closeJournal() { $("journal").hidden = true; }
+$("jbtn").onclick = openJournal; $("jClose").onclick = closeJournal;
+$("jList").addEventListener("click", (e) => { const b = e.target.closest(".gh"); if (b) { picked = +b.dataset.i; drawJournal(game()); } });
+$("mark").onclick = () => { if (picked < 0) return; if (isHost()) markIntent(picked, myName); else net.send("mark", { k: picked }); closeJournal(); };
+function showBoard(g) {
+  const list = $("board");
+  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
+  const submit = me.roundId === g.id && g.score > 0 ? board.submit(g.score).catch(() => null) : Promise.resolve();
+  submit.then(() => board.top(10)).then(({ entries }) => {
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score}</span></li>`).join("") : "<li>No hunts yet. Be the first.</li>";
+  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+}
+/** Keep a color nobody else has: the later sessionId gives way, and the bots' colors count as taken. */
+function fixColor() {
+  const others = Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId), bots = botList().map((b) => b.c);
+  if (!others.some(([id, p]) => id < net.sessionId && p.c === myColor) && !bots.includes(myColor)) return;
+  const used = new Set([...others.map(([, p]) => p.c), ...bots]);
+  myColor = COLORS.find((c) => !used.has(c)) || myColor;
+  net.me.set("c", myColor); if (me.g) me.g.userData.mat.color.set(myColor);
+}
+$("again").onclick = () => { if (isHost()) host.again = true; else net.send("again", {}); };
+
+/** One-off effects worked out from what changed in state (so nobody misses one). */
+let prevG = null, prevHunt = false;
+function effects(g, gs) {
+  if (prevG && prevG.id === g.id) {
+    for (const k of Object.keys(g.found)) if (!prevG.found[k]) { toast(`${g.found[k]} found ${TOOLS[k].ev}!`); sound("found"); drawTools(); }
+    for (const k of Object.keys(g.ruled)) if (!prevG.ruled[k]) { toast(`No ${TOOLS[k].ev.toLowerCase()} here`); drawTools(); }
+    for (const id of Object.keys(g.dead)) if (!prevG.dead[id]) { const c = people().find((o) => o.id === id); if (c) burst(c.x, 1, c.z, "#b9a8ff", 22, 4); sound(id === net.sessionId ? "caught" : "thud"); if (id === net.sessionId) shake = 0.7; }
+    if (g.phase === "escape" && prevG.phase !== "escape") { sound("roar"); shake = 0.5; }
+    if (g.phase === "reveal" && prevG.phase !== "reveal") sound(g.right ? "win" : "lose");
+  } else drawTools();
+  const hunting = !!gs && gs.s === "hunt";
+  if (hunting && !prevHunt) { sound("roar"); if (!ATTRACT) toast("The ghost is hunting!"); }
+  prevHunt = hunting;
+  prevG = g;
+}
+
+// ── INPUT & SOUND ───────────────────────────────────────────────────────────────────
+const touchUI = matchMedia("(pointer: coarse)").matches && !ATTRACT;
+$("run").hidden = !touchUI;
+$("tools").hidden = ATTRACT; $("jbtn").hidden = true; $("read").hidden = ATTRACT;
+if (touchUI) { document.body.classList.add("touch"); Object.assign($("net").style, { top: "calc(max(12px, env(safe-area-inset-top)) + 150px)", bottom: "auto", left: "16px", transform: "none" }); }
+const KEYS = { w: "up", ArrowUp: "up", s: "down", ArrowDown: "down", a: "left", ArrowLeft: "left", d: "right", ArrowRight: "right", Shift: "run" };
+addEventListener("keydown", (e) => {
+  const k = KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key]; if (k) { e.preventDefault(); input[k] = true; }
+  if (e.repeat) return;
+  if (e.key >= "1" && e.key <= "5") setTool(+e.key - 1);
+  if (e.key.toLowerCase() === "q") setTool((me.tool + 1) % TOOLS.length);
+  if (e.key.toLowerCase() === "j") { if ($("journal").hidden) openJournal(); else closeJournal(); }
+  if (e.key === "Escape") closeJournal();
+});
+addEventListener("keyup", (e) => { const k = KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key]; if (k) input[k] = false; });
+addEventListener("blur", () => { for (const k in input) input[k] = false; });
+const cv = renderer.domElement;
+cv.addEventListener("wheel", (e) => setTool((me.tool + (e.deltaY > 0 ? 1 : TOOLS.length - 1)) % TOOLS.length), { passive: true });
+cv.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "mouse") { aim.on = true; aim.nx = (e.clientX / innerWidth) * 2 - 1; aim.ny = -(e.clientY / innerHeight) * 2 + 1; }
+  if (e.pointerId === stick.id) {
+    const dx = e.clientX - stick.ox, dy = e.clientY - stick.oy, d = Math.hypot(dx, dy), k = Math.min(1, d / 50) / (d || 1);
+    stick.x = dx * k; stick.y = dy * k; $("stick").firstElementChild.style.transform = `translate(${stick.x * 35}px, ${stick.y * 35}px)`;
+  }
+});
+cv.addEventListener("pointerdown", (e) => {
+  e.preventDefault(); unlockAudio();
+  if (e.pointerType !== "mouse" && stick.id < 0) { stick.id = e.pointerId; stick.ox = e.clientX; stick.oy = e.clientY; Object.assign($("stick").style, { left: e.clientX + "px", top: e.clientY + "px" }); $("stick").hidden = false; }
+});
+for (const ev of ["pointerup", "pointercancel"]) cv.addEventListener(ev, (e) => { if (e.pointerId === stick.id) { stick.id = -1; stick.x = stick.y = 0; $("stick").hidden = true; } });
+$("run").addEventListener("pointerdown", (e) => { e.preventDefault(); unlockAudio(); input.run = true; $("run").classList.add("on"); });
+for (const ev of ["pointerup", "pointercancel"]) $("run").addEventListener(ev, () => { input.run = false; $("run").classList.remove("on"); });
+document.addEventListener("touchmove", (e) => { if (!e.target.closest(".card")) e.preventDefault(); }, { passive: false });
+
+let AC = null;
+function unlockAudio() { if (!AC && !ATTRACT) try { AC = new AudioContext(); } catch {} }
+addEventListener("keydown", unlockAudio);
+function sound(kind) {
+  if (!AC) return;
+  const t0 = AC.currentTime, tone = (f, d, type, v, f2, at = 0) => {
+    const o = AC.createOscillator(), g = AC.createGain(); o.type = type; o.frequency.setValueAtTime(f, t0 + at); o.frequency.exponentialRampToValueAtTime(f2, t0 + at + d);
+    g.gain.setValueAtTime(v, t0 + at); g.gain.exponentialRampToValueAtTime(0.001, t0 + at + d); o.connect(g).connect(AC.destination); o.start(t0 + at); o.stop(t0 + at + d);
+  };
+  if (kind === "beat") tone(66, 0.16, "sine", 0.4, 40);
+  if (kind === "click") tone(1200, 0.04, "square", 0.05, 900);
+  if (kind === "found") { tone(660, 0.18, "triangle", 0.12, 660); tone(990, 0.3, "triangle", 0.12, 990, 0.12); }
+  if (kind === "scare") tone(180, 0.5, "sawtooth", 0.05, 90);
+  if (kind === "roar") { tone(90, 1.1, "sawtooth", 0.12, 45); tone(140, 0.9, "square", 0.05, 70); }
+  if (kind === "caught") tone(420, 0.7, "sawtooth", 0.15, 50);
+  if (kind === "thud") tone(200, 0.3, "sawtooth", 0.07, 60);
+  if (kind === "win") { tone(523, 0.3, "triangle", 0.12, 523); tone(784, 0.5, "triangle", 0.12, 784, 0.2); }
+  if (kind === "lose") tone(300, 1.0, "sawtooth", 0.08, 70);
+}
+
+// ── MAIN LOOP ───────────────────────────────────────────────────────────────────────
+let last = performance.now(), lastHb = 0, lastHud = 0, shake = 0, nextBeat = 0;
+const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const realNow = performance.now(); // timed on the real clock: after a long freeze the rAF time can be from before the wake
+  if (lastFrameAt && realNow - lastFrameAt > 1000) { wakeHold = realNow + 700; host.was = false; host.last = null; } lastFrameAt = realNow; // woke from a freeze or a background tab: let the newer state arrive, then adopt it like a new host
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)), t = now / 1000; last = now; // never negative: the first frame can be stamped before `last`
+  if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); }
+  if (isHost()) hostTick(dt, now); else host.was = false;
+  const g = game();
+  if (!g) { renderer.render(scene, camera); return; }
+  const gs = ghostState();
+  myTick(dt, g, gs); effects(g, gs);
+  const playing = g.phase === "invest" || g.phase === "escape", hunting = !!gs && gs.s === "hunt" && playing;
+  // People: everyone else eased toward where they last said they were, bots, then me.
+  const seen = new Set(), drawn = [], live = new Set(livePlayers());
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    const q = id !== net.sessionId && live.has(id) && posOf(id, p);
+    if (!q || q.g !== g.id) continue;
+    const v = viewOf(id, p.c || "#ccc", p.n || "Player"); seen.add(id); ease(v, q.x, q.z, q.h, dt);
+    drawn.push({ v, id, tool: q.t || 0, moving: !!q.m });
+  }
+  for (const b of botList()) { const v = viewOf(b.i, b.c, b.n); seen.add(b.i); ease(v, b.x, b.z, b.h, dt); drawn.push({ v, id: b.i, tool: b.t || 0, moving: !!b.mv }); }
+  for (const [id, v] of views) if (!seen.has(id)) { scene.remove(v.g); views.delete(id); }
+  if (!me.g) me.g = makePerson(myColor, "");
+  me.g.position.set(me.x, 0, me.z); me.g.rotation.y = me.h;
+  for (const d of [...drawn, { v: { g: me.g }, id: net.sessionId, tool: me.tool, moving: me.mv }]) { d.dead = !!g.dead[d.id]; pose(d.v.g, d.dead, d.tool, d.moving, t); d.v.g.userData.lens.visible = !d.dead; }
+  // Flashlights: mine first (it casts the shadows), then the nearest others. UV turns the beam purple.
+  drawn.sort((a, b) => dist(a.v.g.position, me) - dist(b.v.g.position, me));
+  const lit = [{ x: me.x, z: me.z, h: me.h, on: !g.dead[net.sessionId], uv: me.tool === 3 }, ...drawn.map((d) => ({ x: d.v.g.position.x, z: d.v.g.position.z, h: d.v.g.rotation.y, on: !d.dead, uv: d.tool === 3 }))];
+  torches.forEach((L, i) => { const c = lit[i]; if (c) aimTorch(L, c, t, i, hunting && dist(c, ghostView) < 10); else L.intensity = 0; });
+  // The ghost: invisible until it scares someone or hunts.
+  if (gs) {
+    if (isHost() || ghostView.fresh) Object.assign(ghostView, { x: gs.x, z: gs.z, h: gs.h, fresh: false });
+    else { const k = 1 - Math.pow(0.001, dt); ghostView.x += (gs.x - ghostView.x) * k; ghostView.z += (gs.z - ghostView.z) * k; ghostView.h += angDiff(gs.h, ghostView.h) * k; }
+    const sinceAct = (Date.now() - gs.a) / 1000, flash = playing && sinceAct < 0.8 ? 0.55 * (1 - sinceAct / 0.8) : 0;
+    const op = hunting ? 0.45 + 0.35 * Math.abs(Math.sin(t * 9)) * (Math.sin(t * 2.3) > -0.6 ? 1 : 0.2) : Math.max(flash, ATTRACT && playing ? 0.18 : 0);
+    ghostMat.opacity = op; ghostObj.userData.eyeMat.opacity = op * 1.5; ghostObj.userData.haze.material.opacity = op * 0.8;
+    ghostMat.emissive.set(hunting ? "#ff5d8a" : "#9fb4ff"); ghostObj.userData.haze.material.color.set(hunting ? "#ff4d7a" : "#a8b8ff");
+    ghostObj.position.set(ghostView.x, 0.15 + Math.sin(t * 2) * 0.12, ghostView.z); ghostObj.rotation.y = ghostView.h;
+    const danger = hunting && !g.dead[net.sessionId] && !g.out[net.sessionId] ? Math.max(0, 1 - dist(ghostView, me) / 12) : 0;
+    $("fear").style.opacity = ATTRACT ? danger * 0.4 : g.dead[net.sessionId] && playing ? 0.6 : Math.max(danger, me.san < 25 && playing ? 0.25 : 0);
+    if (danger > 0.1 && now > nextBeat) { nextBeat = now + 1100 - 700 * danger; sound("beat"); }
+    // Lamps flicker near a scare and go red in a hunt.
+    for (const l of lamps) if (l) {
+      const near = dist(l.L.position, ghostView) < 9, fl = (hunting || (flash > 0 && near)) && Math.sin(t * 31 + l.room) > 0.2;
+      l.L.intensity = fl ? 2 : 18; l.L.color.set(hunting ? "#ff6080" : "#ffd9a0"); l.bulb.material.opacity = fl ? 0.2 : 0.9;
+    }
+    // Frost breath in a freezing ghost room.
+    if (g.found[1] && playing && Math.random() < dt * 4) for (const c of lit) if (roomAt(c.x, c.z) === g.room && c.on) burst(c.x + Math.sin(c.h) * 0.4, 1.5, c.z + Math.cos(c.h) * 0.4, "#cfefff", 1, 0.6, 0.4);
+  }
+  // Evidence props in the ghost's room: handprints (bright under UV), the written-in book.
+  const tiles = roomTiles[g.room] || [];
+  hands.forEach((m, i) => { const p = tiles[(i * 7 + g.id) % tiles.length]; m.visible = !!g.found[3] && !!p; if (p) { m.position.set(p.x + ((i * 37) % 10) / 10 - 0.5, 0.03, p.z + ((i * 53) % 10) / 10 - 0.5); m.rotation.z = i * 1.7; } m.material.opacity = me.tool === 3 ? 0.95 : 0.25; });
+  const bp = tiles[(g.id * 5) % Math.max(1, tiles.length)];
+  book.visible = !!g.found[4] && !!bp; if (bp) book.position.set(bp.x, 0.06, bp.z);
+  exitRing.material.opacity = g.phase === "escape" ? 0.6 + 0.4 * Math.sin(t * 8) : 0.35;
+  for (let i = bits.length - 1; i >= 0; i--) {
+    const b = bits[i]; b.life -= dt; b.vy -= 2 * dt; b.s.position.x += b.vx * dt; b.s.position.y = Math.max(0.05, b.s.position.y + b.vy * dt); b.s.position.z += b.vz * dt;
+    b.s.material.opacity = Math.max(0, b.life); if (b.life <= 0) { scene.remove(b.s); bits.splice(i, 1); }
+  }
+  // Camera: high and behind; when you're dead it follows a teammate. ?attract follows the action.
+  let focus = me;
+  if (g.dead[net.sessionId] && !ATTRACT) { const alive = people().filter((c) => !g.dead[c.id] && !c.mine)[0]; if (alive) focus = alive; }
+  if (ATTRACT && gs) { // the ghost's room while testing, the ghost while it hunts
+    const crew = people().filter((c) => !g.dead[c.id] && inside(c)), near = crew.sort((a, b) => dist(a, ghostView) - dist(b, ghostView))[0];
+    focus = hunting && near ? { x: (ghostView.x + near.x) / 2, z: (ghostView.z + near.z) / 2 } : g.phase === "escape" ? { x: (EXIT.x + ghostView.x) / 2, z: (EXIT.z + ghostView.z) / 2 + 2 } : near ? { x: (near.x * 2 + ghostView.x) / 3, z: (near.z * 2 + ghostView.z) / 3 } : ghostView;
+  }
+  const tall = camera.aspect < 1, hgt = ATTRACT ? 11 : tall ? 24 : 15, back = ATTRACT ? 7 : tall ? 11 : 9;
+  camLook.lerp(new THREE.Vector3(focus.x, 0, focus.z), 1 - Math.pow(ATTRACT ? 0.2 : 0.02, dt));
+  camPos.set(camLook.x, hgt, camLook.z + back);
+  shake = Math.max(0, shake - dt);
+  camera.position.copy(camPos).add(new THREE.Vector3((Math.random() - 0.5) * shake, 0, (Math.random() - 0.5) * shake));
+  camera.lookAt(camLook);
+  renderer.render(scene, camera);
+  if (now - lastHud > 120) { lastHud = now; hud(g, gs); fixColor(); }
+}
+
+(async function start() {
+  net = await connect();
+  me.id = net.sessionId;
+  net.onState((st) => { S = st; });
+  net.on("mark", (msg, from) => { if (isHost() && msg) { const p = S.entities.players?.[from]; markIntent(+msg.k, (p && p.n) || "Someone"); } });
+  net.on("again", () => { const g = game(); if (isHost() && g && g.phase === "reveal") host.again = true; });
+  net.onDisconnect(() => { dropped = true; $("net").textContent = "Reconnecting…"; });
+  net.onReconnect(() => { dropped = false; });
+  if (!net.offline && typeof MP !== "undefined") board = MP.auth({ key: MP_CONNECT.key, apiUrl: MP_CONNECT.apiUrl }).leaderboard(CONFIG.board);
+  const taken = new Set([...Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId).map(([, p]) => p.c), ...shared("bots", []).map((b) => b.c)]);
+  myColor = COLORS.find((c) => !taken.has(c)) || COLORS[Math.floor(Math.random() * COLORS.length)];
+  const pk = net.offline ? "" : await Seal.init().catch(() => "");
+  net.me.set({ n: myName, c: myColor, hb: Date.now(), ...(pk ? { pk } : {}) });
+  camLook.set(me.x, 0, me.z);
+  drawTools();
+  if (PARAMS.has("test")) window.__test = { game, writeGame, people, me, host, isHost, ghostState, botList, input, fits, setTool };
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

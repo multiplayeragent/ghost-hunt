@@ -1,0 +1,21 @@
+{
+  "name": "Ghost Hunt",
+  "genre": "horror",
+  "dim": "3D",
+  "mode": "Co-op",
+  "players": "1–4",
+  "hook": "Find the evidence. Name the ghost. Run.",
+  "how": "Sneak through a haunted house to find the ghost's cold room, then test it with your EMF meter, thermometer, spirit radio, UV light and ghost book. Three clues name the ghost in your journal. Mark it, and the ghost hunts you all the way to the van.",
+  "controls": "WASD to walk, mouse to aim, 1–5 or the tool bar to switch tools, J for the journal, Shift to run, or the touch stick and buttons",
+  "uses": [
+    ["Hidden info", "The ghost type is sealed, never in plain state: only the host's game opens it (each player keeps a sealed copy for when they take over), and everyone sees it at the reveal."],
+    ["Host-run rules", "The host's browser moves the ghost, runs its hunts and decides what evidence your tools find; if it leaves, the next player takes over."],
+    ["Bots", "Bot investigators search the house, test evidence and run from hunts until friends join."],
+    ["Leaderboard", "The best round scores: the right ghost, evidence found and everyone who made it out."]
+  ],
+  "ideas": [
+    "Add a crucifix that stops one hunt",
+    "Make the house bigger with a basement",
+    "Add a ghost that only hunts in the dark"
+  ]
+}
