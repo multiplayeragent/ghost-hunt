@@ -10,7 +10,7 @@ Sneak through a haunted house to find the ghost's cold room, then test it with y
 
 - Stand in the ghost's room holding a tool to test for that evidence: it shows up, or after a while it's ruled out.
 - There are 8 ghost types, each with 3 of the 5 evidences. The journal crosses out the ones that no longer fit.
-- Sanity drains inside, faster in the dark and in the ghost's room, and comes back outside. Once the team's sanity is low, the ghost starts hunting: get away from it or get out of the house.
+- Sanity drains inside, faster in the dark and in the ghost's room, and comes back outside. Once the team's sanity is low, the ghost starts hunting: it howls for a moment, then comes for you. Get away from it or get out of the house.
 - Score: 100 for the right ghost, 20 per evidence, 25 for everyone who makes it to the van.
 
 **Controls:** WASD to walk, mouse to aim, 1–5 or the tool bar to switch tools, J for the journal, Shift to run, or the touch stick and buttons.

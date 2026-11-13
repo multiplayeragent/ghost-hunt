@@ -9,8 +9,8 @@
   body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #efeaf6; user-select: none; -webkit-user-select: none; }
   canvas { display: block; touch-action: none; cursor: crosshair; }
   .hud { position: fixed; pointer-events: none; text-shadow: 0 2px 4px #000c; font-weight: 700; }
-  #stat { top: max(12px, env(safe-area-inset-top)); left: 16px; width: min(240px, calc(100vw - 150px)); }
-  #stat b { display: block; font-size: 19px; }
+  #stat { top: max(12px, env(safe-area-inset-top)); left: 16px; width: min(280px, calc(100vw - 150px)); }
+  #stat b { display: block; font-size: clamp(14px, 4.2vw, 19px); white-space: nowrap; }
   #stat .bar { height: 7px; margin-top: 5px; border-radius: 4px; background: #ffffff22; overflow: hidden; }
   #stat .bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #7b6cff, #b9a8ff); transition: width .5s; }
   #stat .bar i.low { background: linear-gradient(90deg, #ff4d6d, #ff8fa3); }
@@ -30,7 +30,7 @@
   #tools button, .round { min-width: 52px; height: 52px; border-radius: 12px; border: 2px solid #ffffff44; background: #1a1630cc; color: #fff; font: 800 12px system-ui, sans-serif; touch-action: none; cursor: pointer; padding: 0 6px; }
   #tools button.on { border-color: #b9a8ff; background: #5a48c8cc; }
   #tools button.done { box-shadow: inset 0 -4px 0 #4fe39a; } #tools button.ruled { box-shadow: inset 0 -4px 0 #ff5d73; }
-  #jbtn { position: fixed; top: calc(max(12px, env(safe-area-inset-top)) + 96px); left: 16px; height: 44px; border-radius: 12px; border: 2px solid #b9a8ff; background: #2a2150cc; color: #fff; font: 800 14px system-ui, sans-serif; padding: 0 14px; cursor: pointer; }
+  #jbtn { position: fixed; top: calc(max(12px, env(safe-area-inset-top)) + 74px); left: 16px; height: 44px; border-radius: 12px; border: 2px solid #b9a8ff; background: #2a2150cc; color: #fff; font: 800 14px system-ui, sans-serif; padding: 0 14px; cursor: pointer; }
   #run { position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(max(12px, env(safe-area-inset-bottom)) + 130px); width: 64px; height: 64px; border-radius: 50%; }
   body.touch #tools button { min-width: 0; flex: 1; padding: 0 4px; font-size: 11px; } body.touch #tools { left: 12px; right: 12px; transform: none; }
   body.touch #tools b { display: none; } body.touch #msg { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 204px); }
@@ -141,11 +141,12 @@ const CONFIG = {
   radius: 0.35,           // how wide a person is, for walls
   testMs: 10000,          // ms of testing (holding the tool in the ghost's room) to rule an evidence out ...
   findMs: [2500, 5500],   // ... or this many ms (random in the range) to find it, if the ghost has it
+  botTest: 0.4,           // how fast a bot's testing counts next to a player's (1 = the same; lower leaves you something to find)
   sanity: { dark: 0.8, lit: 0.3, ghostRoom: 0.6, outside: -2.5, scare: 5 }, // % lost per second (negative = regained), and per scare nearby
   huntBelow: 55,          // the ghost can hunt once the team's average sanity is below this (each type shifts it)
   huntMs: 9000,           // how long one hunt lasts
   huntGap: [22000, 38000],// ms between hunts
-  ghost: { wander: 1.1, hunt: 4.0, enraged: 4.7, sight: 14, catch: 0.9, actEvery: [6000, 13000] },
+  ghost: { wander: 1.1, hunt: 4.0, enraged: 4.7, sight: 14, catch: 0.9, actEvery: [6000, 13000], windup: 1500 }, // windup: ms it stands and howls when a hunt starts, before it moves
   ambient: 0.9,           // how much you see without a flashlight (0 = pitch black)
   light: { range: 16, angle: 0.58, power: 60 },
   shadows: true,          // your own flashlight casts wall shadows
@@ -320,7 +321,7 @@ const pkOf = (id) => (id === net.sessionId ? Seal.pub : S.entities.players?.[id]
 
 // ── MAP ─────────────────────────────────────────────────────────────────────────────
 if (ATTRACT) {
-  Object.assign(CONFIG, { briefMs: 300, investMs: 60000, escapeMs: 9000, resultsMs: 2500, testMs: 4000, findMs: [900, 2000], huntGap: [6500, 8000], huntMs: 5000, ambient: 2.1, huntBelow: 101 });
+  Object.assign(CONFIG, { briefMs: 300, investMs: 60000, escapeMs: 9000, resultsMs: 2500, testMs: 4000, findMs: [900, 2000], botTest: 1, huntGap: [6500, 8000], huntMs: 5000, ambient: 2.1, huntBelow: 101 });
 }
 const MAP = CONFIG.map, MH = MAP.length, MW = MAP[0].length, TS = CONFIG.tile;
 const cell = (cx, cz) => (MAP[cz] && MAP[cz][cx]) || "#";
@@ -587,6 +588,8 @@ function startRound(id) {
 }
 /** Spot n near the van's back door (players take 0-3, bots 4 and up). */
 const spawnSpot = (n) => ({ x: EXIT.x + Math.sin(n * 2.4) * 1.8 * (n ? 1 : 0), z: EXIT.z + 1.5 + Math.cos(n * 2.4) * 0.7 * (n ? 1 : 0), h: 0 });
+/** Where bot b stands by the van: each its own spot, so they never stand inside each other. */
+const vanSpot = (b) => { const s = spawnSpot(4 + [...host.bots.keys()].indexOf(b.id)); return { x: s.x, z: s.z }; };
 /** Seal the ghost type to every player with a key (again whenever a new key shows up). */
 async function sealType(g) {
   if (net.offline || host.typeFor !== g.id) return;
@@ -608,7 +611,7 @@ function adopt() {
     host.probe = (gs.pr || [0, 0, 0, 0, 0]).map((p) => (p / 100) * CONFIG.testMs);
   } else if (g && !host.ghost) { const p = pick(roomTiles[g.room]); host.ghost = { x: p.x, z: p.z, h: 0, s: "idle", path: [], until: 0, nextAct: t + 5000, actAt: 0, nextHunt: t + between(CONFIG.huntGap), tgt: "", pause: 0 }; }
   if (g && g.phase === "escape") host.ghost.s = "hunt"; // the final hunt never stops
-  if (g && host.typeFor !== g.id) { host.type = -1; host.findAt = TOOLS.map(() => between(CONFIG.findMs)); host.known = Object.keys(g.found).length > 0; openType(g); }
+  if (g && host.typeFor !== g.id) { host.type = -1; host.findAt = TOOLS.map(() => between(CONFIG.findMs)); host.known = Object.keys(g.found).length + Object.keys(g.ruled).length > 0 || host.probe.some((p) => p > 0); openType(g); }
 }
 /** Open my sealed copy of the ghost type. With no copy (I joined too late), pick a type that fits the evidence so far. */
 async function openType(g) {
@@ -675,7 +678,7 @@ function testEvidence(dt, G, up) {
   for (const c of up) {
     const k = c.tool;
     if (roomAt(c.x, c.z) !== G.room || G.found[k] || G.ruled[k]) continue;
-    host.probe[k] += dt * 1000;
+    host.probe[k] += dt * 1000 * (c.bot ? CONFIG.botTest : 1);
     host.known = true;
     if (TYPES[host.type].ev.includes(k) && host.probe[k] >= host.findAt[k]) { G.found[k] = c.name; host.probe[k] = 0; dirty = true; }
     else if (host.probe[k] >= CONFIG.testMs) { G.ruled[k] = 1; host.probe[k] = 0; dirty = true; }
@@ -685,7 +688,7 @@ function testEvidence(dt, G, up) {
 /** A "mark" intent (or the host's own, or a bot's in the preview): the final hunt begins. */
 function applyMark(G, k, by) {
   Object.assign(G, { mark: k, markBy: by, phase: "escape", phaseAt: Date.now(), endsAt: Date.now() + CONFIG.escapeMs });
-  Object.assign(host.ghost, { s: "hunt", until: Infinity, path: [], tgt: "" });
+  Object.assign(host.ghost, { s: "hunt", until: Infinity, path: [], tgt: "", pause: Date.now() + CONFIG.ghost.windup });
 }
 /** The round is over: the type finally goes into plain state, with the score. */
 function reveal(G, all, t) {
@@ -724,7 +727,7 @@ function ghostTick(dt, G, up, t) {
   const gh = host.ghost, C = CONFIG.ghost, T = TYPES[Math.max(0, host.type)];
   let dirty = false;
   const avg = up.length ? up.reduce((s, c) => s + c.san, 0) / up.length : 100;
-  if (gh.s === "idle" && G.phase === "invest" && t > gh.nextHunt && avg < CONFIG.huntBelow + T.hunt) { Object.assign(gh, { s: "hunt", until: t + CONFIG.huntMs, path: [], tgt: "" }); gh.nextHunt = t + CONFIG.huntMs + between(CONFIG.huntGap); }
+  if (gh.s === "idle" && G.phase === "invest" && t > gh.nextHunt && avg < CONFIG.huntBelow + T.hunt) { Object.assign(gh, { s: "hunt", until: t + CONFIG.huntMs, path: [], tgt: "", pause: t + C.windup }); gh.nextHunt = t + CONFIG.huntMs + between(CONFIG.huntGap); }
   if (gh.s === "hunt" && G.phase !== "escape" && t > gh.until) { Object.assign(gh, { s: "idle", path: [] }); }
   if (t < gh.pause) return false;
   if (gh.s === "idle") {
@@ -752,6 +755,11 @@ function botsTick(dt, G, t) {
   if (ATTRACT) agents.push(me);
   for (const b of agents) {
     b.mv = false;
+    if (G.out[b.id] && !G.dead[b.id] && b !== me) { // made it out: walk on to the van instead of stopping in the doorway
+      if (!b.path.length && dist(b, vanSpot(b)) > 0.3) b.path = route(b, vanSpot(b));
+      b.mv = follow(b, CONFIG.botRun, dt);
+      continue;
+    }
     if (G.dead[b.id] || G.out[b.id] || (G.phase !== "invest" && G.phase !== "escape")) continue;
     if (b !== me) b.san = Math.max(0, Math.min(100, b.san - sanityRate(b, G) * dt));
     if (t > b.think) { b.think = t + 400 + Math.random() * 300; botThink(b, G); }
@@ -768,14 +776,17 @@ function botThink(b, G) {
   let mode = "search", goal = null;
   const hunting = gh.s === "hunt";
   if (G.phase === "escape") { mode = "escape"; goal = { x: EXIT.x + (Math.random() - 0.5) * 2, z: EXIT.z }; }
-  else if (hunting && inside(b) && (dist(gh, b) < 9 || gh.tgt === b.id)) { mode = "flee"; goal = { x: EXIT.x, z: EXIT.z + 2 }; }
+  else if (hunting && inside(b) && (dist(gh, b) < 9 || gh.tgt === b.id)) { mode = "flee"; goal = vanSpot(b); }
   else if (hunting && !inside(b)) { mode = "wait"; goal = b.goal && b.mode === "wait" ? b.goal : { x: b.x, z: b.z }; }
   else if (host.known) {
     const open = TOOLS.map((T, k) => k).filter((k) => !G.found[k] && !G.ruled[k]);
-    const others = new Set([...host.bots.values(), ...(ATTRACT ? [me] : [])].filter((o) => o !== b && roomAt(o.x, o.z) === G.room).map((o) => o.tool));
-    if (open.length && (!open.includes(b.tool) || others.has(b.tool))) b.tool = open.find((k) => !others.has(k)) ?? open[0];
-    mode = "test";
-    goal = ri === G.room && b.mode === "test" && b.goal ? b.goal : pick(roomTiles[G.room]);
+    if (!open.length) { mode = "wait"; goal = vanSpot(b); } // every test is done: wait by the van for someone to name the ghost
+    else {
+      const others = new Set(people().filter((o) => o.id !== b.id && roomAt(o.x, o.z) === G.room).map((o) => o.tool)); // what everyone else in the room is testing, players included
+      if (!open.includes(b.tool) || others.has(b.tool)) b.tool = open.find((k) => !others.has(k)) ?? open[0];
+      mode = "test";
+      goal = ri === G.room && b.mode === "test" && b.goal ? b.goal : pick(roomTiles[G.room]);
+    }
   } else {
     const rooms = CONFIG.rooms.map((R, i) => i).filter((i) => !b.seen.has(i) && i !== 3);
     goal = b.mode === "search" && b.goal && b.path.length ? b.goal : pick(roomTiles[rooms.length ? pick(rooms) : pick(CONFIG.rooms.map((R, i) => i))]);
@@ -834,6 +845,7 @@ function markIntent(k, by) {
 // ── HUD & RESULTS ───────────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const evLow = (k) => TOOLS[k].ev.replace(/^[A-Z][a-z]/, (c) => c.toLowerCase()); // "Freezing temps" -> "freezing temps", but "EMF level 5" stays
 const fmt = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
 let board = null, boardFor = -1, toastUntil = 0, dropped = false, picked = -1;
 function toast(text) { $("toast").textContent = text; $("toast").classList.add("on"); toastUntil = performance.now() + 2200; }
@@ -877,10 +889,11 @@ function hud(g, gs) {
     if (g.dead[net.sessionId]) msg = "The ghost got you. Watch your team: they can still win.";
     else if (gs && gs.s === "hunt") msg = "IT'S HUNTING! Run outside or keep away from it.";
     else if (t - me.firstAt < 12000) msg = touchUI ? "Left thumb walks · tap a tool below · the ghost's room is cold" : "WASD walk · mouse aims · 1–5 pick a tool · J journal · the ghost's room is cold";
-  } else if (g.phase === "escape") msg = myOut ? (g.out[net.sessionId] ? "You made it out!" : "") : `${g.markBy ? esc(g.markBy) + " marked it. " : ""}It's furious. Get to the van!`;
+    else if (fits(g).length === 1) msg = touchUI ? "The evidence fits one ghost: tap Journal and mark it" : "The evidence fits one ghost: press J and mark it";
+  } else if (g.phase === "escape") msg = myOut ? (g.out[net.sessionId] ? "You made it out!" : "The ghost got you. Watch your team run for the van.") : `${g.markBy ? esc(g.markBy) + " marked it. " : ""}It's furious. Get to the van!`;
   $("msg").textContent = msg;
   const R = reading(g, gs, performance.now() / 1000), pr = gs && gs.pr ? gs.pr[me.tool] : 0, inRoom = roomAt(me.x, me.z) === g.room;
-  const status = g.found[me.tool] ? ` · ✓ found by ${esc(g.found[me.tool])}` : g.ruled[me.tool] ? ` · ✗ no ${TOOLS[me.tool].ev.toLowerCase()}` : inRoom && pr > 0 ? ` · testing ${pr}%` : "";
+  const status = g.found[me.tool] ? ` · ✓ found by ${esc(g.found[me.tool])}` : g.ruled[me.tool] ? ` · ✗ no ${evLow(me.tool)}` : inRoom && pr > 0 ? ` · testing ${pr}%` : "";
   $("readText").textContent = R.text + status;
   $("read").style.borderColor = R.hot ? "#9ff7c4" : "#ffffff22";
   $("probe").hidden = !(inRoom && pr > 0 && !g.found[me.tool] && !g.ruled[me.tool]); $("probeBar").style.width = pr + "%";
@@ -937,7 +950,7 @@ let prevG = null, prevHunt = false;
 function effects(g, gs) {
   if (prevG && prevG.id === g.id) {
     for (const k of Object.keys(g.found)) if (!prevG.found[k]) { toast(`${g.found[k]} found ${TOOLS[k].ev}!`); sound("found"); drawTools(); }
-    for (const k of Object.keys(g.ruled)) if (!prevG.ruled[k]) { toast(`No ${TOOLS[k].ev.toLowerCase()} here`); drawTools(); }
+    for (const k of Object.keys(g.ruled)) if (!prevG.ruled[k]) { toast(`No ${evLow(k)} here`); drawTools(); }
     for (const id of Object.keys(g.dead)) if (!prevG.dead[id]) { const c = people().find((o) => o.id === id); if (c) burst(c.x, 1, c.z, "#b9a8ff", 22, 4); sound(id === net.sessionId ? "caught" : "thud"); if (id === net.sessionId) shake = 0.7; }
     if (g.phase === "escape" && prevG.phase !== "escape") { sound("roar"); shake = 0.5; }
     if (g.phase === "reveal" && prevG.phase !== "reveal") sound(g.right ? "win" : "lose");
@@ -952,12 +965,13 @@ function effects(g, gs) {
 const touchUI = matchMedia("(pointer: coarse)").matches && !ATTRACT;
 $("run").hidden = !touchUI;
 $("tools").hidden = ATTRACT; $("jbtn").hidden = true; $("read").hidden = ATTRACT;
-if (touchUI) { document.body.classList.add("touch"); Object.assign($("net").style, { top: "calc(max(12px, env(safe-area-inset-top)) + 150px)", bottom: "auto", left: "16px", transform: "none" }); }
+if (touchUI) { document.body.classList.add("touch"); Object.assign($("net").style, { top: "calc(max(12px, env(safe-area-inset-top)) + 128px)", bottom: "auto", left: "16px", transform: "none" }); }
 const KEYS = { w: "up", ArrowUp: "up", s: "down", ArrowDown: "down", a: "left", ArrowLeft: "left", d: "right", ArrowRight: "right", Shift: "run" };
 addEventListener("keydown", (e) => {
   const k = KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key]; if (k) { e.preventDefault(); input[k] = true; }
   if (e.repeat) return;
-  if (e.key >= "1" && e.key <= "5") setTool(+e.key - 1);
+  const digit = /^(?:Digit|Numpad)([1-5])$/.exec(e.code); // by position, not character: Shift (run) turns "1" into "!"
+  if (digit) setTool(+digit[1] - 1);
   if (e.key.toLowerCase() === "q") setTool((me.tool + 1) % TOOLS.length);
   if (e.key.toLowerCase() === "j") { if ($("journal").hidden) openJournal(); else closeJournal(); }
   if (e.key === "Escape") closeJournal();
@@ -965,6 +979,7 @@ addEventListener("keydown", (e) => {
 addEventListener("keyup", (e) => { const k = KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key]; if (k) input[k] = false; });
 addEventListener("blur", () => { for (const k in input) input[k] = false; });
 const cv = renderer.domElement;
+cv.addEventListener("contextmenu", (e) => e.preventDefault());
 cv.addEventListener("wheel", (e) => setTool((me.tool + (e.deltaY > 0 ? 1 : TOOLS.length - 1)) % TOOLS.length), { passive: true });
 cv.addEventListener("pointermove", (e) => {
   if (e.pointerType === "mouse") { aim.on = true; aim.nx = (e.clientX / innerWidth) * 2 - 1; aim.ny = -(e.clientY / innerHeight) * 2 + 1; }
