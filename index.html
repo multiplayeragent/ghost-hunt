@@ -41,6 +41,7 @@
   .card h2 { margin: 0 0 4px; font-size: 24px; }
   .card h3 { margin: 12px 0 4px; font-size: 13px; color: #b9a8ff; text-align: left; text-transform: uppercase; letter-spacing: .05em; }
   .card ol { margin: 0; padding-left: 24px; font-size: 14px; text-align: left; } .card li span { float: right; font-variant-numeric: tabular-nums; }
+  .card li.note { list-style: none; margin-left: -24px; } /* a status line, not a numbered entry */
   .card p { margin: 6px 0 0; font-size: 14px; opacity: .88; }
   .ev { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; }
   .ev span { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: #ffffff14; border: 1px solid #ffffff22; }
@@ -80,7 +81,7 @@
 </div></div>
 <div class="over" id="over" hidden><div class="card">
   <h2 id="overTitle"></h2><p id="overLine"></p><p id="overScore"></p>
-  <h3>Best hunts</h3><ol id="board"><li>Loading…</li></ol>
+  <h3>Best hunts</h3><ol id="board"><li class="note">Loading…</li></ol>
   <button class="go" id="again">Play again</button>
   <p id="next"></p>
 </div></div>
@@ -929,11 +930,11 @@ $("jList").addEventListener("click", (e) => { const b = e.target.closest(".gh");
 $("mark").onclick = () => { if (picked < 0) return; if (isHost()) markIntent(picked, myName); else net.send("mark", { k: picked }); closeJournal(); };
 function showBoard(g) {
   const list = $("board");
-  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
+  if (!board) { list.innerHTML = "<li class='note'>Leaderboards need a connection.</li>"; return; }
   const submit = me.roundId === g.id && g.score > 0 ? board.submit(g.score).catch(() => null) : Promise.resolve();
   submit.then(() => board.top(10)).then(({ entries }) => {
-    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score}</span></li>`).join("") : "<li>No hunts yet. Be the first.</li>";
-  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score}</span></li>`).join("") : "<li class='note'>No hunts yet. Be the first.</li>";
+  }).catch(() => { list.innerHTML = "<li class='note'>Couldn't load the leaderboard.</li>"; });
 }
 /** Keep a color nobody else has: the later sessionId gives way, and the bots' colors count as taken. */
 function fixColor() {
